@@ -53,6 +53,25 @@ const LANTERN_RING = 7.4
 const GATE_DISTANCE = 15
 
 /**
+ * Vệt đuôi lúc chạy bộ: MẢNH và mờ.
+ *
+ * Chạy bộ là việc người chơi làm suốt cả lượt chơi, nên vệt ở đây không được là
+ * điểm nhấn — nó chỉ để nói "đang lao đi". Dày lên hay sáng lên thì sau ba phút
+ * nó thành thứ gây nhiễu, và lúc thật sự cần chú ý (phi hành, chiêu thức) thì
+ * không còn gì để đẩy lên nữa.
+ */
+const RUN_TRAIL = { width: 0.12, opacity: 0.7, fade: 0.22, step: 0.2 } as const
+
+/**
+ * Vệt đuôi lúc ngự kiếm phi hành: DÀY, DÀI và sáng.
+ *
+ * Ở đây vệt chính LÀ hiệu ứng của chiêu — phi hành không có vụ nổ hay tia sáng
+ * nào, cái duy nhất nói lên "đang cưỡi kiếm bay" là dải linh khí kéo dài phía
+ * sau. Bước 0.34 cho dải dài tới ~6 unit ở 18 điểm xương sống.
+ */
+const FLY_TRAIL = { width: 0.24, opacity: 0.9, fade: 0.45, step: 0.34 } as const
+
+/**
  * Khe hở tối thiểu giữa hai vật cản, tính bằng world unit.
  * Phải lớn hơn ĐƯỜNG KÍNH nhân vật (0.52) để không bao giờ sinh ra cái khe mà
  * người chơi lách vào rồi kẹt cứng — đó là cách phòng thật sự cho trường hợp
@@ -395,17 +414,18 @@ export class ArenaScene implements GameScene {
     this.projectiles.onTrail = (x, y, z, vx, vz, spec) => {
       this.vfx.spawnTrail(x, y, z, vx, vz, spec.element)
     }
+    // Dải đuôi bám theo từng viên, khoá theo `serial` nên hai viên bay cạnh nhau
+    // không dùng lẫn vệt của nhau
+    this.projectiles.onTrailPath = (serial, x, y, z, spec) => {
+      this.vfx.follow(`proj:${serial}`, true, x, y, z, this.vfx.projectileTrail(spec.element))
+    }
+    this.projectiles.onTrailEnd = (serial) => {
+      this.vfx.follow(`proj:${serial}`, false, 0, 0, 0)
+    }
 
     // Vệt chém do VFX vẽ khi nghe sự kiện, nên hệ chiến đấu không biết VFX tồn tại
     ctx.bus.on('combat:swing', (e) => {
-      this.vfx.spawnSlash(
-        e.x,
-        e.y,
-        e.z,
-        e.facing,
-        e.radius,
-        e.side === 'player' ? Palette.linh : Palette.maHuyet,
-      )
+      this.vfx.spawnSlash(e.x, e.y, e.z, e.facing, e.radius, e.side)
     })
     // Lưu ngay ở các mốc đáng lưu, không đợi hết chu kỳ tự lưu
     ctx.bus.on('cultivation:breakthrough', () => this.save(this.nowMs()))
@@ -1433,6 +1453,37 @@ export class ArenaScene implements GameScene {
     this.ctx.bus.emit('toast', { text: 'Trọng thương, lui về cổng phái', kind: 'bad' })
   }
 
+  /**
+   * Vệt và hạt bám theo người chơi. Gọi mỗi khung hình vẽ.
+   *
+   * Hai vệt khác nhau chứ không một vệt đổi tham số: vệt đi bộ mảnh và sát đất
+   * (nó chỉ để nói "đang lao đi"), còn vệt phi hành dày, dài và sáng hơn — lúc
+   * cưỡi kiếm thì cái vệt CHÍNH LÀ hiệu ứng của chiêu, nên nó phải là thứ hút
+   * mắt. Dùng một vệt rồi đổi bề rộng giữa đường thì không được: `options` chỉ
+   * có tác dụng lúc vệt được tạo ra.
+   */
+  private updatePlayerTrails(frameDt: number): void {
+    const p = this.player
+    const alive = p.combatant.alive
+    const speed = p.moveSpeed
+    const flying = p.flying
+    const x = p.pos.x
+    const z = p.pos.z
+
+    // Ngưỡng 2.4 cho vệt bộ: đi bộ bình thường không để lại vệt, chỉ khi CHẠY.
+    // Để 0 thì vệt bám theo cả lúc nhích từng bước và mất hết ý nghĩa.
+    this.vfx.follow(
+      'player:run',
+      alive && !flying && speed > 2.4,
+      x,
+      p.y + 0.22,
+      z,
+      RUN_TRAIL,
+    )
+    this.vfx.follow('player:fly', alive && flying, x, p.y + 0.05, z, FLY_TRAIL)
+    if (alive) this.vfx.motionMotes(frameDt, x, p.y, z, speed, flying)
+  }
+
   render(_alpha: number, frameDt: number): void {
     const { input, camera } = this.ctx
     this.player.render(frameDt)
@@ -1442,6 +1493,7 @@ export class ArenaScene implements GameScene {
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
     const w = canvas?.clientWidth ?? window.innerWidth
     const h = canvas?.clientHeight ?? window.innerHeight
+    this.updatePlayerTrails(frameDt)
     this.vfx.update(frameDt, camera.camera, w, h)
     this.bars.update(frameDt, this.combat.all, camera.camera, w, h)
     this.skillBar.update(frameDt, this.player.caster, this.player.realm, this.player.linhLuc)

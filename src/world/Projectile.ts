@@ -75,6 +75,14 @@ interface Projectile {
    * một viên hay của hai viên khác nhau.
    */
   trailTimer: number
+  /**
+   * Số thứ tự của LẦN BẮN này, không phải của ô trong hồ.
+   *
+   * Cần vì vệt dải phải bám theo từng viên: nếu lấy chỉ số ô làm danh tính thì
+   * viên mới sinh ra ở ô vừa được trả về sẽ tiếp tục vệt của viên cũ — ra một
+   * dải nối từ chỗ viên trước vừa nổ sang chỗ viên sau vừa bắn.
+   */
+  serial: number
 }
 
 const GROUND_CLEARANCE = 0.55
@@ -98,6 +106,8 @@ export class ProjectileSystem {
   private readonly scaleVec = new Vector3()
   private readonly axis = new Vector3(0, 1, 0)
   private readonly hitBuffer: Combatant[] = []
+  /** Cấp danh tính cho từng lần bắn. Chỉ tăng, không bao giờ dùng lại. */
+  private serialCounter = 0
 
   constructor(
     scene: Scene,
@@ -143,6 +153,7 @@ export class ProjectileSystem {
         hits: new Set(),
         hitsLeft: 0,
         trailTimer: 0,
+        serial: 0,
       })
     }
     this.hideAll()
@@ -183,6 +194,7 @@ export class ProjectileSystem {
     slot.returning = false
     slot.travelled = 0
     slot.trailTimer = 0
+    slot.serial = ++this.serialCounter
     slot.hits.clear()
     slot.hitsLeft = Math.max(1, spec.pierce)
   }
@@ -194,9 +206,11 @@ export class ProjectileSystem {
         return it
       }
     }
-    // Hồ cạn: giành lại viên già nhất
+    // Hồ cạn: giành lại viên già nhất. Phải kết thúc vệt của nó ở đây — nó không
+    // đi qua `retire` nên nếu bỏ qua thì vệt cũ bị bỏ rơi và chiếm chỗ mãi.
     let oldest = this.items[0] as Projectile
     for (const it of this.items) if (it.age > oldest.age) oldest = it
+    this.onTrailEnd?.(oldest.serial)
     return oldest
   }
 
@@ -213,6 +227,10 @@ export class ProjectileSystem {
         p.trailTimer = TRAIL_INTERVAL
         this.onTrail?.(p.x, p.y, p.z, p.vx, p.vz, spec)
       }
+      // Vệt dải thì nhả MỖI FRAME, không chặn nhịp như hạt: nhịp 0.035s làm đầu
+      // dải tụt lại sau viên đạn tới hơn nửa unit ở tốc độ bay thường, và mắt
+      // đọc ra là dải bị đứt khỏi thanh kiếm chứ không phải bám theo nó.
+      this.onTrailPath?.(p.serial, p.x, p.y, p.z, spec)
 
       if (spec.behavior === 'truyKich') this.homeToward(p, dt)
       if (spec.behavior === 'hoiKiem') this.steerReturn(p, dt)
@@ -366,6 +384,12 @@ export class ProjectileSystem {
     this.retire(p)
   }
 
+  /** Vệt dải bám theo viên đạn, nhả mỗi frame. `serial` là danh tính của viên. */
+  onTrailPath?: (serial: number, x: number, y: number, z: number, spec: ProjectileSpec) => void
+
+  /** Viên `serial` đã tan — thả vệt dải của nó cho nó tự mờ đi. */
+  onTrailEnd?: (serial: number) => void
+
   /** Hook để VFX vẽ vụ nổ. Scene gán vào. */
   onExplode?: (x: number, y: number, z: number, radius: number, spec: ProjectileSpec) => void
 
@@ -380,6 +404,7 @@ export class ProjectileSystem {
   ) => void
 
   private retire(p: Projectile): void {
+    if (p.active) this.onTrailEnd?.(p.serial)
     p.active = false
     p.spec = null
     p.owner = null

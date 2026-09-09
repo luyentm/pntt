@@ -352,6 +352,81 @@ hạt cùng hình học, đổi hết sang cộng sáng ở cỡ phủ kín màn
 phủ của hạt trong suốt**, nên nới quy tắc bằng một *hạn mức phủ màn hình* là gần như miễn
 phí, còn nới bằng cách bỏ hẳn thì không.
 
+### Vệt đuôi (`vfx/RibbonTrails.ts`)
+
+Dải ribbon bám theo chuyển động, tông chủ đạo **vàng kim ở đầu → lam lục linh khí ở đuôi**.
+Dùng cho: chạy bộ · ngự kiếm phi hành · vệt lưỡi kiếm khi chém · cú lướt Phong Độn Thuật ·
+đuôi từng viên phi hành khí (viên lấy màu ngũ hành của nó ở đầu vệt).
+
+Đi theo CẶP màu chứ không một màu là chỗ quan trọng nhất về mặt thị giác. Một vệt một màu
+đọc ra là "dải nhựa phát sáng"; vệt chuyển từ vàng nóng sang lam lục nguội đọc ra là linh
+khí đang tan — mắt hiểu chuyển màu thành thời gian, nên chính gradient nói cho người xem
+biết đầu nào là đầu mới. Và vàng phải ở ĐẦU: nó sáng hơn nên hút mắt, mà thứ cần hút mắt
+là chỗ vật thể đang ở, không phải chỗ nó vừa rời khỏi.
+
+**Cả 28 vệt nằm trong một `BufferGeometry`** với màu theo đỉnh dạng RGBA, tốn một draw call.
+Không dùng lại cách của `SlashArcLayer` (mỗi vệt một `Mesh` + `Material` riêng) được: vệt
+bám theo chuyển động thì mỗi ĐIỂM trên vệt phải có độ mờ và bề rộng riêng, không phải mỗi
+vệt. Alpha theo đỉnh chỉ hoạt động khi thuộc tính `color` có `itemSize === 4` — three bật
+`USE_COLOR_ALPHA` dựa vào đúng điều kiện đó, không phải vào một tuỳ chọn material.
+
+Bốn quyết định hình học, mỗi cái sửa một cách vệt trông sai:
+
+- **Trục bề rộng = `cross(tiếp tuyến, hướng nhìn)`**, tính lại từng điểm mỗi khung, nên mặt
+  dải luôn quay ra camera. Trục cố định (ví dụ luôn theo +Y) thì ở góc iso xoay được, vệt
+  biến thành một đường chỉ khi camera nhìn dọc trục đó — mà camera game này xoay 360°.
+- **`side: DoubleSide`** là bắt buộc, không phải cho chắc: chiều quấn tam giác đảo khi tiếp
+  tuyến đổi phía so với camera, và `FrontSide` cull đúng những đoạn đó, ra vệt đứt nham nhở.
+  Đây đúng cái lỗi đã gặp ở billboard hạt — `PlaneGeometry` hướng +Z trong khi camera nhìn
+  theo −Z của chính nó.
+- **Thóp về đuôi** theo `(1 − u)^0.65`. Dải đều bề rộng đọc ra là "cái ống"; bề rộng thu hẹp
+  là thứ mắt đọc thành hướng chuyển động.
+- **Điểm chưa dùng bị gộp vào điểm cuối** thành tam giác diện tích 0, nên GPU không tô một
+  pixel nào — rẻ hơn để chúng ở đâu đó với alpha 0.
+
+**Lỗi thật, và nó không hề báo lỗi.** Điểm 0 của xương sống là "đầu sống": nó bị ghi lại
+bằng vị trí hiện tại MỖI khung, vì nếu chỉ ghi khi đã đi đủ một bước thì đầu vệt tụt lại
+sau vật thể tới cả bước và trông như dải bị đứt khỏi thanh kiếm. Bản đầu lại đo khoảng cách
+"đã đi đủ bước chưa" với chính điểm 0 — nên mốc so sánh bị ghi lại cùng lúc với đầu vệt, và
+phép đo luôn chỉ ra quãng đi trong MỘT khung (~0,07 unit ở tốc độ chạy) chứ không phải quãng
+đi từ lần chốt trước. Vệt teo về một điểm dưới chân và đứng đó mãi. Mốc phải là ĐIỂM 1 —
+điểm đã chốt gần nhất.
+
+Test đầu tiên của tôi không bắt được: nó đẩy các điểm cách nhau 5 unit nên khung nào cũng
+vượt bước, và nó xanh trong khi vệt trong game không hề dài ra. Test hồi quy giờ đẩy từng
+bước **nhỏ hơn** bước chốt, đúng như trong game.
+
+Một đánh đổi có chủ ý: điểm mới chốt vào đúng vị trí hiện tại, nên ở khung có chốt thì điểm
+1 trùng khít điểm 0 và mất một trong 18 điểm ở mũi vệt. Cách chốt vị trí của khung TRƯỚC
+dùng hết 18 điểm, nhưng làm nhịp chốt **phụ thuộc fps** — mốc lùi một khung nên điều kiện đủ
+bước thoả sớm hơn, và giãn cách thật hoá thành `step − quãng-đi-một-khung`. Với một
+codebase fixed-timestep thì đổi một điểm ở mũi vệt để lấy chiều dài không đổi là đáng.
+
+**Danh tính cho từng viên đạn.** `ProjectileSystem.onTrail` cũ không có danh tính — ghi chú
+trong `Projectile.ts` đã nói rõ lớp VFX không thể biết hai lời gọi liền nhau là của một viên
+hay hai viên. Chặn nhịp bằng hạt thì không sao, nhưng dải thì phải biết. Nên mỗi lần bắn
+được cấp một `serial` chỉ tăng, và có hai hook mới: `onTrailPath` (mỗi khung) và
+`onTrailEnd`. Không lấy chỉ số ô trong hồ làm danh tính: viên mới sinh ở ô vừa trả về sẽ
+tiếp tục vệt của viên cũ, ra một dải nối từ chỗ viên trước vừa nổ sang chỗ viên sau vừa bắn.
+`onTrailEnd` phải gọi ở CẢ hai đường viên bị thu hồi — `retire()` và nhánh "hồ cạn, giành
+lại viên già nhất" trong `take()`, nhánh này không đi qua `retire`.
+
+Dải nhả **mỗi khung**, không chặn nhịp 0,035 s như hạt: ở nhịp đó đầu dải tụt sau viên đạn
+hơn nửa unit và mắt đọc ra là dải bị đứt khỏi thanh kiếm.
+
+**Màu phải bão hoà hơn tưởng.** Dùng lại `Palette.vang` (`#F0D98A`) và `Palette.linh`
+(`#7FE3D0`) thì vệt ra trắng vô sắc: dải vẽ bằng phép cộng nên nền càng sáng càng nuốt màu
+nhạt, và trên sân đá thì không còn thấy vàng hay lục gì. Thêm cặp riêng `vetVang` `#FFD75E`
+và `vetLuc` `#35E0B0`.
+
+**Chi phí, đo được:** +2 draw call và +1904 tam giác trên tổng ~99 nghìn. Là 952 tam giác
+vẽ **hai lượt** — pass nét viền khai báo `EffectAttribute.DEPTH` nên `postprocessing` chạy
+một lượt render depth riêng cho cả cảnh, và mọi hình khối trong game đều bị vẽ hai lượt như
+vậy. Chi phí không đổi theo số vệt đang sống vì hình học được cấp sẵn toàn bộ.
+
+Chưa làm: 33 thanh Thanh Trúc Phong Vân Kiếm chưa có vệt — 33 dải vượt hạn mức 28, nên nó
+cần một hạn mức riêng hoặc chỉ gắn vệt cho một phần số kiếm.
+
 ### Chế độ trình diễn thần thông
 
 Chọn từ menu chính (*Xem thần thông*). Mở hết cảnh giới Kết Đan nên cả 7 pháp thuật,

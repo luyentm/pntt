@@ -57,6 +57,16 @@ export const Palette = {
   bang: 0x9fd8f0,
   doc: 0x8fbf4a,
   vang: 0xf0d98a,
+  /**
+   * Đầu vệt đuôi: vàng kim BÃO HOÀ.
+   *
+   * Không dùng lại `vang` (0xF0D98A) được: nó nhạt, và vệt đuôi vẽ bằng phép
+   * cộng (additive) nên nền càng sáng thì màu nhạt càng bị nuốt — trên sân đá
+   * nó ra một vệt trắng vô sắc. Bão hoà lên thì vệt còn đọc ra là vàng ở mọi nền.
+   */
+  vetVang: 0xffd75e,
+  /** Đuôi vệt đuôi: lam lục linh khí bão hoà, đậm hơn `linh` để nổi trên cỏ. */
+  vetLuc: 0x35e0b0,
 
   // --- UI / thế giới ---
   troiTren: 0x2e4a6b,

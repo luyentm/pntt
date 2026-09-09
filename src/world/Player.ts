@@ -221,6 +221,16 @@ export class Player {
     return this.phase !== 'none'
   }
 
+  /** Tốc độ di chuyển thực tế của khung vừa rồi, world unit mỗi giây. */
+  get moveSpeed(): number {
+    return this.speed
+  }
+
+  /** Độ cao so với mặt đất do phi hành, 0 khi đứng đất. */
+  get altitude(): number {
+    return this.flyHeight
+  }
+
   /** Gắn nguồn cao độ. Phải gọi trước spawn(). */
   setGround(ground: HeightField): void {
     this.ground = ground

@@ -8,6 +8,7 @@ import { BreakthroughFx } from './BreakthroughFx'
 import { GroundMarkLayer } from './GroundMarks'
 import { LightningBolt } from './LightningBolt'
 import { ParticleLayer, type EmitOptions } from './Particles'
+import { NO_TRAIL, RibbonTrailLayer, type TrailOptions } from './RibbonTrails'
 import { FloatingTextLayer } from './FloatingText'
 import { ImpactShardLayer } from './ImpactShards'
 import { ShieldBubble } from './ShieldBubble'
@@ -57,6 +58,27 @@ function elementParticle(element: string): Partial<EmitOptions> {
 }
 
 /**
+ * Cặp màu chủ đạo của mọi vệt đuôi: VÀNG KIM ở đầu, LAM LỤC linh khí ở đuôi.
+ *
+ * Đi theo cặp chứ không một màu là chỗ quan trọng. Một vệt một màu đọc ra là
+ * "một dải nhựa phát sáng"; vệt chuyển từ vàng nóng sang lam lục nguội đọc ra
+ * là linh khí đang tan — mắt hiểu chuyển màu thành thời gian, nên chính cái
+ * gradient nói cho người xem biết đầu nào là đầu mới.
+ *
+ * Vàng phải là đầu, không phải đuôi: nó sáng hơn nên hút mắt, mà thứ cần hút
+ * mắt là chỗ vật thể ĐANG Ở, không phải chỗ nó vừa rời khỏi.
+ */
+const TRAIL_HEAD = Palette.vetVang
+const TRAIL_TAIL = Palette.vetLuc
+
+/** Vệt của ma đạo: giữ tông huyết để người chơi vẫn phân biệt được đòn của địch. */
+const TRAIL_HEAD_MA = 0xd94a52
+const TRAIL_TAIL_MA = Palette.aoMaDao
+
+/** Nhịp nhả hạt linh khí theo bước chân, giây. */
+const MOTE_INTERVAL = 0.075
+
+/**
  * Bộ mặt của toàn bộ hiệu ứng.
  *
  * Nó NGHE sự kiện chứ không được hệ chiến đấu gọi trực tiếp. Nhờ vậy CombatWorld
@@ -74,8 +96,14 @@ export class Vfx {
   readonly particles: ParticleLayer
   readonly marks: GroundMarkLayer
   readonly lightning: LightningBolt
+  readonly trails: RibbonTrailLayer
 
   private readonly unsubscribe: Array<() => void> = []
+  /** Handle của các vệt đang bám theo chủ thể, tra theo khoá của cảnh. */
+  private readonly follows = new Map<string, number>()
+  /** Đảo chiều quét của vệt chém sau mỗi nhát, để combo không lặp một động tác. */
+  private slashFlip = false
+  private moteTimer = 0
 
   constructor(
     scene: Scene,
@@ -93,6 +121,7 @@ export class Vfx {
     this.particles = new ParticleLayer()
     this.marks = new GroundMarkLayer()
     this.lightning = new LightningBolt()
+    this.trails = new RibbonTrailLayer()
 
     this.group.add(this.slash.group)
     this.group.add(this.shards.group)
@@ -102,6 +131,7 @@ export class Vfx {
     this.group.add(this.particles.group)
     this.group.add(this.marks.group)
     this.group.add(this.lightning.group)
+    this.group.add(this.trails.group)
     scene.add(this.group)
 
     this.unsubscribe.push(
@@ -268,6 +298,18 @@ export class Vfx {
           color: Palette.linh,
           life: 0.3,
         })
+        // Và một vệt dải chạy hết cú lướt. Vệt chém chỉ nói "có gì quét qua đây";
+        // dải nối điểm đầu với điểm cuối mới nói ĐI TỪ ĐÂU TỚI ĐÂU — thứ duy nhất
+        // cho người chơi thấy mình vừa dịch đi bao xa.
+        const dx = Math.sin(e.facing) * e.distance
+        const dz = Math.cos(e.facing) * e.distance
+        this.trails.strokeLine(e.x, e.y + 0.55, e.z, e.x + dx, e.y + 0.55, e.z + dz, {
+          head: TRAIL_HEAD,
+          tail: TRAIL_TAIL,
+          width: 0.3,
+          opacity: 0.8,
+          fade: 0.34,
+        })
       }),
     )
 
@@ -429,14 +471,35 @@ export class Vfx {
   }
 
   /** Gọi khi người chơi hoặc quái vung đòn, để vẽ vệt chém. */
-  spawnSlash(x: number, y: number, z: number, facing: number, radius: number, color?: number): void {
-    this.slash.spawn(x, y + 0.5, z, facing, radius, { color: color ?? Palette.linh })
+  spawnSlash(
+    x: number,
+    y: number,
+    z: number,
+    facing: number,
+    radius: number,
+    side: 'player' | 'ally' | 'enemy' = 'player',
+  ): void {
+    const friendly = side === 'player'
+    const color = friendly ? Palette.linh : Palette.maHuyet
+    this.slash.spawn(x, y + 0.5, z, facing, radius, { color })
+
+    // Dải bám theo đường lưỡi kiếm, ĐÈ LÊN cung chém chứ không thay nó: cung nói
+    // "cả vùng này bị quét", dải nói "lưỡi đi theo đường này và đây là chỗ nó
+    // vừa tới". Bỏ cung đi thì đòn đánh mất phần diện tích và hoá ra mảnh khảnh.
+    this.slashFlip = !this.slashFlip
+    this.trails.strokeArc(x, y + 0.52, z, facing, radius * 0.95, 1.0, this.slashFlip, {
+      head: friendly ? TRAIL_HEAD : TRAIL_HEAD_MA,
+      tail: friendly ? TRAIL_TAIL : TRAIL_TAIL_MA,
+      width: 0.26,
+      opacity: friendly ? 0.95 : 0.8,
+      fade: 0.26,
+    })
     // Bụi bốc theo lưỡi: chỉ vài hạt, và cố ý chụm hẹp theo hướng vung — nó nói
     // cho mắt biết đòn đi về phía nào, thứ mà một dải ribbon mờ không nói rõ
     this.particles.emit(x + Math.sin(facing) * radius * 0.6, y + 0.25, z + Math.cos(facing) * radius * 0.6, this.rng, {
       count: 5,
       shape: 'spark',
-      color: color ?? Palette.linh,
+      color,
       color2: Palette.vang,
       pattern: 'cone',
       dirX: Math.sin(facing),
@@ -448,6 +511,101 @@ export class Vfx {
       gravity: -6,
       drag: 3,
     })
+  }
+
+  /**
+   * Vệt dải bám theo một chủ thể đang chuyển động.
+   *
+   * Cảnh gọi MỖI FRAME với `active` = "chủ thể này còn đang để lại vệt". Lớp này
+   * tự lo phần vòng đời: `active` chuyển sang true thì nó xin một vệt mới,
+   * chuyển sang false thì nó thả cho vệt tan.
+   *
+   * Vì sao lấy khoá bằng chuỗi chứ không bắt bên gọi giữ handle: bên gọi là các
+   * hệ gameplay (người chơi, hệ phi hành khí), và chúng KHÔNG NÊN giữ trạng thái
+   * của lớp đồ hoạ. Bật/tắt hiệu ứng phải là việc sửa một chỗ trong `Vfx`, không
+   * phải đi dọn các trường handle rải rác trong luật chơi.
+   *
+   * `options` chỉ có tác dụng ở khung hình vệt được tạo ra; đổi màu giữa đường
+   * thì phải thả rồi bám lại.
+   */
+  follow(
+    key: string,
+    active: boolean,
+    x: number,
+    y: number,
+    z: number,
+    options?: TrailOptions,
+  ): void {
+    const existing = this.follows.get(key) ?? NO_TRAIL
+    if (!active) {
+      if (existing !== NO_TRAIL) {
+        this.trails.release(existing)
+        this.follows.delete(key)
+      }
+      return
+    }
+    let handle = existing
+    // isLive cũng false khi vệt bị hồ thu hồi để nhường cho vệt khác, nên nhánh
+    // này lo luôn cả trường hợp đó — không cần bên gọi biết chuyện thu hồi
+    if (!this.trails.isLive(handle)) {
+      handle = this.trails.attach(options)
+      this.follows.set(key, handle)
+    }
+    this.trails.feed(handle, x, y, z)
+  }
+
+  /**
+   * Hạt linh khí bốc lên theo bước chân. Cảnh gọi mỗi frame, lớp này tự chặn nhịp.
+   *
+   * Ngưỡng tốc độ 2.2 chứ không 0: đi bộ chậm mà cũng toé hạt thì hạt mất hết ý
+   * nghĩa — nó phải là dấu hiệu của "đang lao đi", không phải của "đang tồn tại".
+   */
+  motionMotes(dt: number, x: number, y: number, z: number, speed: number, flying: boolean): void {
+    if (speed < 2.2) {
+      this.moteTimer = 0
+      return
+    }
+    this.moteTimer -= dt
+    if (this.moteTimer > 0) return
+    this.moteTimer = MOTE_INTERVAL
+
+    this.particles.emit(x, y + (flying ? 0.1 : 0.12), z, this.rng, {
+      count: flying ? 3 : 2,
+      shape: 'mote',
+      color: TRAIL_TAIL,
+      color2: TRAIL_HEAD,
+      pattern: 'dome',
+      speed: flying ? [1.2, 3] : [0.5, 1.6],
+      size: [0.02, 0.045],
+      life: [0.28, 0.6],
+      // Trọng lực ÂM nhẹ + cản cao: hạt dâng lên rồi đứng lại thành một vệt sương
+      // ở lại phía sau. Trọng lực dương thì chúng rơi xuống thành bụi đất.
+      gravity: -1.6,
+      drag: 3.6,
+      lift: flying ? 1.4 : 0.9,
+      fade: 'pop',
+    })
+  }
+
+  /**
+   * Cấu hình vệt dải cho phi hành khí theo ngũ hành.
+   *
+   * Đầu vệt lấy MÀU CỦA HỆ, không phải vàng kim như các vệt khác: hoả cầu và
+   * băng phong phù phải nhìn ra ngay là hai chiêu khác nhau, và màu của vệt là
+   * thứ đọc được ở khoảng cách xa hơn cả hình viên đạn. Đuôi vẫn về lam lục nên
+   * cả bộ hiệu ứng vẫn cùng một tông.
+   */
+  projectileTrail(element: string): TrailOptions {
+    return {
+      head: ELEMENT_COLOR[element] ?? TRAIL_HEAD,
+      tail: ELEMENT_COLOR_2[element] ?? TRAIL_TAIL,
+      width: 0.14,
+      opacity: 0.85,
+      fade: 0.3,
+      // Bước ngắn: viên đạn bay nhanh nên nếu để bước mặc định thì 18 điểm xương
+      // sống trải ra gần 3 unit và dải dài quá thành ra một cái ống
+      step: 0.11,
+    }
   }
 
   /** Vệt sau phi hành khí. ProjectileSystem gọi qua hook onTrail. */
@@ -549,6 +707,7 @@ export class Vfx {
     this.marks.update(dt)
     this.lightning.update(dt)
     this.slash.update(dt)
+    this.trails.update(dt, camera)
     this.shards.update(dt)
     this.burst.update(dt)
     this.floats.update(dt, camera, width, height)
@@ -564,6 +723,7 @@ export class Vfx {
     this.particles.dispose()
     this.marks.dispose()
     this.lightning.dispose()
+    this.trails.dispose()
     this.floats.dispose()
     this.group.removeFromParent()
   }
