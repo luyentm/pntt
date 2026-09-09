@@ -8,6 +8,10 @@ if (!(canvas instanceof HTMLCanvasElement)) {
 }
 
 const game = new Game(canvas)
+
+// Nạp màn TRƯỚC khi dựng bảng debug: bảng đọc hook debug của màn lúc khởi tạo,
+// nên nếu dựng trước thì nhóm điều khiển chiến đấu sẽ không xuất hiện
+await game.setScene(new ArenaScene())
 const debug = new DebugPanel(game)
 
 // Số đọc của debug panel phải lấy SAU khi frame đã vẽ xong, nên hook vào
@@ -17,7 +21,6 @@ function pollDebug(): void {
   requestAnimationFrame(pollDebug)
 }
 
-await game.setScene(new ArenaScene())
 game.start()
 pollDebug()
 

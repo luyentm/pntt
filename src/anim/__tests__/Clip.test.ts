@@ -1,25 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { CHANNELS, JOINTS, JOINT_INDEX } from '@/art/ChibiRig'
-import { POSE_SIZE, blendPose, compileClip, createPoseBuffer, samplePose } from '../Clip'
+import { CHIBI_RIG, type ChibiJoint } from '@/art/ChibiRig'
+import { CHANNELS } from '../Rig'
+import { blendPose, compileClip, createPoseBuffer, samplePose } from '../Clip'
 import { IDLE, RUN, WALK } from '../clips/locomotion'
 
+const POSE_SIZE = CHIBI_RIG.poseSize
+
 /** Đọc một kênh của khớp trong buffer thế. */
-function ch(buf: Float32Array, joint: keyof typeof JOINT_INDEX, channel: number): number {
-  return buf[JOINT_INDEX[joint] * CHANNELS + channel] as number
+function ch(buf: Float32Array, joint: ChibiJoint, channel: number): number {
+  return buf[CHIBI_RIG.index[joint] * CHANNELS + channel] as number
 }
 
 describe('compileClip', () => {
   it('POSE_SIZE khớp với số khớp × số kênh', () => {
-    expect(POSE_SIZE).toBe(JOINTS.length * CHANNELS)
+    expect(POSE_SIZE).toBe(CHIBI_RIG.joints.length * CHANNELS)
   })
 
   it('ghi kênh vào đúng ô của khớp', () => {
-    const clip = compileClip({
+    const clip = compileClip(CHIBI_RIG, {
       name: 'test',
       duration: 1,
       frames: [{ t: 0, pose: { head: { rx: 0.5, py: -0.25 } } }],
     })
-    const buf = createPoseBuffer()
+    const buf = createPoseBuffer(CHIBI_RIG)
     samplePose(clip, 0, buf)
     expect(ch(buf, 'head', 0)).toBeCloseTo(0.5)
     expect(ch(buf, 'head', 4)).toBeCloseTo(-0.25)
@@ -30,7 +33,7 @@ describe('compileClip', () => {
 
   it('từ chối keyframe có thời gian giảm', () => {
     expect(() =>
-      compileClip({
+      compileClip(CHIBI_RIG, {
         name: 'bad',
         duration: 1,
         frames: [{ t: 0.5, pose: {} }, { t: 0.2, pose: {} }],
@@ -39,23 +42,35 @@ describe('compileClip', () => {
   })
 
   it('từ chối tên khớp lạ', () => {
+    // TypeScript đã chặn được ở compile time; test này bảo vệ lớp KIỂM TRA RUNTIME,
+    // cần cho trường hợp clip được nạp từ dữ liệu ngoài hoặc gán sai rig
     expect(() =>
-      compileClip({
+      compileClip(CHIBI_RIG, {
         name: 'bad',
         duration: 1,
-        // @ts-expect-error — cố tình truyền khớp không tồn tại
-        frames: [{ t: 0, pose: { khongTonTai: { rx: 1 } } }],
+        frames: [{ t: 0, pose: { khongTonTai: { rx: 1 } } } as never],
+      }),
+    ).toThrow(/khớp lạ/)
+  })
+
+  it('phát hiện dùng clip của rig khác', () => {
+    // Clip của thú áp lên rig người sẽ ghi vào khớp sai -> phải chặn ngay
+    expect(() =>
+      compileClip(CHIBI_RIG, {
+        name: 'wrongRig',
+        duration: 1,
+        frames: [{ t: 0, pose: { legFL: { rx: 1 } } } as never],
       }),
     ).toThrow(/khớp lạ/)
   })
 
   it('từ chối clip rỗng', () => {
-    expect(() => compileClip({ name: 'empty', duration: 1, frames: [] })).toThrow(/keyframe/)
+    expect(() => compileClip(CHIBI_RIG, { name: 'empty', duration: 1, frames: [] })).toThrow(/keyframe/)
   })
 })
 
 describe('samplePose', () => {
-  const clip = compileClip({
+  const clip = compileClip(CHIBI_RIG, {
     name: 'ramp',
     duration: 2,
     frames: [
@@ -66,7 +81,7 @@ describe('samplePose', () => {
   })
 
   it('nội suy tuyến tính giữa hai keyframe', () => {
-    const buf = createPoseBuffer()
+    const buf = createPoseBuffer(CHIBI_RIG)
     samplePose(clip, 0.25, buf)
     expect(ch(buf, 'head', 0)).toBeCloseTo(0.25, 5)
     samplePose(clip, 1.5, buf)
@@ -74,8 +89,8 @@ describe('samplePose', () => {
   })
 
   it('lặp vòng theo duration', () => {
-    const buf = createPoseBuffer()
-    const a = createPoseBuffer()
+    const buf = createPoseBuffer(CHIBI_RIG)
+    const a = createPoseBuffer(CHIBI_RIG)
     samplePose(clip, 0.4, a)
     // Đúng một chu kỳ sau phải ra cùng giá trị
     samplePose(clip, 2.4, buf)
@@ -86,7 +101,7 @@ describe('samplePose', () => {
   })
 
   it('clip không lặp thì kẹp ở hai đầu', () => {
-    const once = compileClip({
+    const once = compileClip(CHIBI_RIG, {
       name: 'once',
       duration: 1,
       loop: false,
@@ -95,7 +110,7 @@ describe('samplePose', () => {
         { t: 1, pose: { head: { rx: 1 } } },
       ],
     })
-    const buf = createPoseBuffer()
+    const buf = createPoseBuffer(CHIBI_RIG)
     samplePose(once, 5, buf)
     expect(ch(buf, 'head', 0)).toBeCloseTo(1, 5)
     samplePose(once, -5, buf)
@@ -103,12 +118,12 @@ describe('samplePose', () => {
   })
 
   it('clip một keyframe thì luôn trả về thế đó', () => {
-    const still = compileClip({
+    const still = compileClip(CHIBI_RIG, {
       name: 'still',
       duration: 1,
       frames: [{ t: 0, pose: { torso: { ry: 0.3 } } }],
     })
-    const buf = createPoseBuffer()
+    const buf = createPoseBuffer(CHIBI_RIG)
     samplePose(still, 7.7, buf)
     expect(ch(buf, 'torso', 1)).toBeCloseTo(0.3, 5)
   })
@@ -116,9 +131,9 @@ describe('samplePose', () => {
 
 describe('blendPose', () => {
   it('k = 0 và k = 1 trả về đúng hai đầu', () => {
-    const a = createPoseBuffer()
-    const b = createPoseBuffer()
-    const out = createPoseBuffer()
+    const a = createPoseBuffer(CHIBI_RIG)
+    const b = createPoseBuffer(CHIBI_RIG)
+    const out = createPoseBuffer(CHIBI_RIG)
     a[0] = 1
     b[0] = 3
     blendPose(a, b, 0, out)
@@ -134,8 +149,8 @@ describe('clip di chuyển', () => {
   it('walk và run khép kín vòng lặp (frame đầu = frame cuối)', () => {
     // Nếu hai đầu không khớp thì mỗi vòng sẽ có một cú giật thấy rõ
     for (const clip of [WALK, RUN, IDLE]) {
-      const first = createPoseBuffer()
-      const last = createPoseBuffer()
+      const first = createPoseBuffer(CHIBI_RIG)
+      const last = createPoseBuffer(CHIBI_RIG)
       samplePose(clip, 0, first)
       // Lấy mẫu sát cuối thay vì đúng duration, vì đúng duration đã wrap về 0
       samplePose(clip, clip.duration - 1e-5, last)
@@ -146,8 +161,8 @@ describe('clip di chuyển', () => {
   })
 
   it('chân trái và chân phải lệch pha nửa chu kỳ khi đi', () => {
-    const now = createPoseBuffer()
-    const half = createPoseBuffer()
+    const now = createPoseBuffer(CHIBI_RIG)
+    const half = createPoseBuffer(CHIBI_RIG)
     samplePose(WALK, 0, now)
     samplePose(WALK, WALK.duration / 2, half)
     // Nửa chu kỳ sau, chân phải phải ở đúng chỗ chân trái đang đứng
@@ -156,7 +171,7 @@ describe('clip di chuyển', () => {
   })
 
   it('tay đánh ngược pha với chân', () => {
-    const buf = createPoseBuffer()
+    const buf = createPoseBuffer(CHIBI_RIG)
     samplePose(WALK, 0, buf)
     // Chân trái ra trước (rx âm) thì vai trái phải ra sau (rx dương)
     expect(ch(buf, 'hipL', 0)).toBeLessThan(0)
@@ -164,8 +179,8 @@ describe('clip di chuyển', () => {
   })
 
   it('chạy thì ngả người ra trước và biên độ lớn hơn đi', () => {
-    const walk = createPoseBuffer()
-    const run = createPoseBuffer()
+    const walk = createPoseBuffer(CHIBI_RIG)
+    const run = createPoseBuffer(CHIBI_RIG)
     samplePose(WALK, 0, walk)
     samplePose(RUN, 0, run)
     // torso rx âm = ngả ra trước

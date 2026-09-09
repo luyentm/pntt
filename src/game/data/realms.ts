@@ -1,0 +1,114 @@
+/**
+ * Thang cảnh giới của Phàm Nhân Tu Tiên.
+ *
+ * Bản demo đi tới Kết Đan. Các đại cảnh giới sau (Nguyên Anh, Hoá Thần...) để
+ * dành cho các chương Thiên Nam trở đi — thêm vào cuối mảng là xong, mọi công
+ * thức đều tính theo chỉ số nên không phải sửa gì.
+ */
+
+export interface MajorRealm {
+  readonly key: string
+  readonly name: string
+  /** Tên từng tầng nhỏ trong đại cảnh giới. */
+  readonly tiers: readonly string[]
+  /** Hệ số nhân stat khi vừa vào đại cảnh giới này. */
+  readonly powerBase: number
+  /** Mỗi tầng nhỏ cộng thêm bao nhiêu vào hệ số. */
+  readonly powerPerTier: number
+}
+
+const luyenKhiTiers = Array.from({ length: 13 }, (_, i) => `tầng ${i + 1}`)
+
+export const MAJOR_REALMS: readonly MajorRealm[] = [
+  {
+    key: 'phamNhan',
+    name: 'Phàm nhân',
+    tiers: ['chưa nhập đạo'],
+    powerBase: 1,
+    powerPerTier: 0,
+  },
+  {
+    key: 'luyenKhi',
+    name: 'Luyện Khí kỳ',
+    tiers: luyenKhiTiers,
+    powerBase: 2,
+    powerPerTier: 0.42,
+  },
+  {
+    key: 'trucCo',
+    name: 'Trúc Cơ kỳ',
+    tiers: ['sơ kỳ', 'trung kỳ', 'hậu kỳ'],
+    powerBase: 12,
+    powerPerTier: 3.2,
+  },
+  {
+    key: 'ketDan',
+    name: 'Kết Đan kỳ',
+    tiers: ['sơ kỳ', 'trung kỳ', 'hậu kỳ', 'đại thành'],
+    powerBase: 46,
+    powerPerTier: 11,
+  },
+]
+
+/** Chỉ số đại cảnh giới. Dùng số chứ không dùng key để so sánh cao thấp được. */
+export const REALM = {
+  PHAM_NHAN: 0,
+  LUYEN_KHI: 1,
+  TRUC_CO: 2,
+  KET_DAN: 3,
+} as const
+
+export interface RealmPosition {
+  /** Chỉ số trong MAJOR_REALMS. */
+  major: number
+  /** Chỉ số tầng nhỏ, bắt đầu từ 0. */
+  tier: number
+}
+
+export function majorRealm(major: number): MajorRealm {
+  const clamped = Math.min(MAJOR_REALMS.length - 1, Math.max(0, major))
+  return MAJOR_REALMS[clamped] as MajorRealm
+}
+
+/** Số tầng nhỏ của một đại cảnh giới. */
+export function tierCount(major: number): number {
+  return majorRealm(major).tiers.length
+}
+
+/** Tên đầy đủ, ví dụ "Luyện Khí kỳ tầng 7". */
+export function realmName(pos: RealmPosition): string {
+  const realm = majorRealm(pos.major)
+  const tier = realm.tiers[Math.min(realm.tiers.length - 1, Math.max(0, pos.tier))]
+  return realm.tiers.length === 1 ? realm.name : `${realm.name} ${tier}`
+}
+
+/** Hệ số sức mạnh dùng để suy ra stat. Tăng đơn điệu theo cảnh giới. */
+export function realmPower(pos: RealmPosition): number {
+  const realm = majorRealm(pos.major)
+  const tier = Math.min(realm.tiers.length - 1, Math.max(0, pos.tier))
+  return realm.powerBase + realm.powerPerTier * tier
+}
+
+/**
+ * ★ LUẬT CHÊNH LỆCH CẢNH GIỚI — mechanic đặc trưng nhất của Phàm Nhân Tu Tiên.
+ *
+ * Chênh một ĐẠI cảnh giới là một vực thẳm, không phải một bước. Luyện Khí không
+ * thể đánh thắng Trúc Cơ bằng cách farm thêm trang bị hay chơi giỏi hơn — phải
+ * đột phá. Chính điều này làm việc lên cấp có sức nặng thật, thay vì chỉ là con
+ * số tăng dần.
+ *
+ * Không bao giờ trả về 0: vẫn phải gọt được một chút để người chơi thấy mình
+ * đang làm gì đó, và để "lấy nhiều đánh ít" còn có ý nghĩa.
+ */
+export function realmGapFactor(attackerMajor: number, defenderMajor: number): number {
+  const gap = attackerMajor - defenderMajor
+  if (gap >= 0) {
+    // Đánh xuống thì áp đảo, nhưng có trần để không thành vô nghĩa
+    return Math.min(3, 1 + gap * 0.6)
+  }
+  // Kết hợp với phòng ngự cao hơn của đối phương, 0.15 cho ra khoảng 11% sát
+  // thương thực tế khi đánh lên một đại cảnh giới — tức cần hơn 10 lần số đòn.
+  // Đủ để là một vực thẳm, mà vẫn không phải là bức tường tuyệt đối.
+  const penalties = [0.15, 0.035, 0.012]
+  return penalties[Math.min(penalties.length - 1, -gap - 1)] as number
+}

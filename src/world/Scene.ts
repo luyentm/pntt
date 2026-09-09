@@ -24,8 +24,23 @@ export interface SceneContext {
  * bên trong `fixedUpdate` của nó. Bản demo ship đúng một màn nhưng qua chính
  * interface này, nên thêm chương sau không phải sửa lõi.
  */
+/**
+ * Hành động debug mà một màn có thể cấp cho bảng debug.
+ * Tuỳ chọn: màn nào không có combat thì không cần cài đặt.
+ */
+export interface SceneDebugActions {
+  spawnEnemies(id: string, count: number): void
+  killAllEnemies(): void
+  healPlayer(): void
+  setGodMode(on: boolean): void
+  enemyCount(): number
+  aliveEnemyCount(): number
+}
+
 export interface GameScene {
   readonly name: string
+  /** Có thì bảng debug sẽ hiện thêm nhóm điều khiển chiến đấu. */
+  readonly debug?: SceneDebugActions
   load(ctx: SceneContext): void | Promise<void>
   /** Nhịp cố định 60Hz — toàn bộ gameplay ở đây. */
   fixedUpdate(dt: number): void

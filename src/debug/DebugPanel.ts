@@ -14,6 +14,7 @@ export class DebugPanel {
     drawCalls: '0',
     tamGiac: '0',
     material: '0',
+    quai: '0',
   }
 
   constructor(private readonly game: Game) {
@@ -68,6 +69,19 @@ export class DebugPanel {
       .name('Ngưỡng sáng')
     bloom.close()
 
+    const combat = game.currentScene?.debug
+    if (combat) {
+      const f = this.gui.addFolder('Chiến đấu')
+      f.add(this.readout, 'quai').name('Quái còn sống').listen().disable()
+      f.add({ go: () => combat.spawnEnemies('yeuThu', 6) }, 'go').name('+6 Yêu Thử')
+      f.add({ go: () => combat.spawnEnemies('hacLang', 3) }, 'go').name('+3 Hắc Lang')
+      f.add({ go: () => combat.killAllEnemies() }, 'go').name('Diệt sạch quái')
+      f.add({ go: () => combat.healPlayer() }, 'go').name('Hồi đầy sinh lực')
+      f.add({ god: false }, 'god')
+        .name('Bất tử')
+        .onChange((v: boolean) => combat.setGodMode(v))
+    }
+
     const cam = this.gui.addFolder('Camera')
     cam.add(game.camera, 'distance', 5, 40, 0.5).name('Khoảng cách').listen()
     cam.add(game.camera, 'pitch', 0.4, 1.4, 0.01).name('Góc chúc').listen()
@@ -94,6 +108,8 @@ export class DebugPanel {
     this.readout.drawCalls = String(this.game.renderer.drawCalls)
     this.readout.tamGiac = this.game.renderer.triangles.toLocaleString('vi-VN')
     this.readout.material = String(materials.size)
+    const combat = this.game.currentScene?.debug
+    if (combat) this.readout.quai = `${combat.aliveEnemyCount()} / ${combat.enemyCount()}`
   }
 
   dispose(): void {

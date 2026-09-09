@@ -62,3 +62,168 @@ html, body {
   transition: opacity 0.45s ease;
 }
 #boot.hidden { opacity: 0; pointer-events: none; }
+
+/* ---------- Số sát thương bay ---------- */
+.float-text-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.float-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform, opacity;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  /* Viền tối để số đọc được trên mọi nền, thay cho việc phải có nền mờ */
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 0.9),
+    0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.ft-damage {
+  font-size: 17px;
+  color: #f4ead8;
+}
+
+.ft-crit {
+  font-size: 25px;
+  color: var(--kim);
+}
+
+.ft-player-hurt {
+  font-size: 20px;
+  color: #ff8d76;
+}
+
+.ft-heal {
+  font-size: 17px;
+  color: var(--luc);
+}
+
+.ft-info {
+  font-size: 15px;
+  color: var(--lam);
+}
+
+/* ---------- Thanh máu trong thế giới ---------- */
+.world-bars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.wbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 46px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(10, 12, 16, 0.72);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  will-change: transform;
+}
+
+.wbar-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--luc);
+  transition: width 0.12s linear;
+}
+
+/* ---------- HUD ---------- */
+.hud {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.hud-realm {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--kim);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.hud-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hud-bar {
+  position: relative;
+  width: 246px;
+  height: 17px;
+  border-radius: 3px;
+  background: rgba(10, 12, 16, 0.68);
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 226, 208, 0.18),
+    0 2px 8px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.hud-bar--mp {
+  width: 202px;
+  height: 13px;
+}
+
+.hud-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  transform-origin: left center;
+  transition: width 0.14s ease-out;
+}
+
+.hud-bar--hp .hud-bar-fill {
+  background: linear-gradient(180deg, #d2604a, #a3372c);
+}
+
+.hud-bar--mp .hud-bar-fill {
+  background: linear-gradient(180deg, #5fa8d8, #35719c);
+}
+
+.hud-bar-fill.is-critical {
+  animation: hp-pulse 0.7s ease-in-out infinite;
+}
+
+@keyframes hp-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.7); }
+}
+
+.hud-bar-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: rgba(245, 240, 226, 0.92);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.hud-bar-label b {
+  font-weight: 600;
+  opacity: 0.82;
+}
+
+.hud-bar--mp .hud-bar-label {
+  font-size: 9.5px;
+}

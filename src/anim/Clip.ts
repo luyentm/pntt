@@ -1,5 +1,5 @@
 import type { Bone } from 'three'
-import { CHANNELS, CHIBI_REST, JOINTS, JOINT_INDEX, type JointName } from '@/art/ChibiRig'
+import { CHANNELS, type RigDef } from './Rig'
 
 /** Độ lệch của một khớp so với thế nghỉ. Kênh nào bỏ trống nghĩa là 0. */
 export interface JointPose {
@@ -11,19 +11,19 @@ export interface JointPose {
   pz?: number
 }
 
-export type PoseDef = Partial<Record<JointName, JointPose>>
+export type PoseDef<Name extends string> = Partial<Record<Name, JointPose>>
 
-export interface KeyframeDef {
+export interface KeyframeDef<Name extends string> {
   /** Mốc thời gian, giây. Phải tăng dần. */
   t: number
-  pose: PoseDef
+  pose: PoseDef<Name>
 }
 
-export interface ClipDef {
+export interface ClipDef<Name extends string> {
   name: string
   duration: number
   loop?: boolean
-  frames: KeyframeDef[]
+  frames: KeyframeDef<Name>[]
 }
 
 /**
@@ -31,37 +31,41 @@ export interface ClipDef {
  * Biên dịch một lần lúc nạp module để lúc chạy chỉ còn đọc số và lerp —
  * không tra object, không cấp phát, nên không sinh rác mỗi frame.
  */
-export interface Clip {
+export interface Clip<Name extends string = string> {
   readonly name: string
   readonly duration: number
   readonly loop: boolean
   readonly times: Float32Array
-  /** frameCount × JOINTS.length × CHANNELS */
+  /** frameCount × rig.joints.length × CHANNELS */
   readonly data: Float32Array
+  readonly rig: RigDef<Name>
 }
 
-export const POSE_SIZE = JOINTS.length * CHANNELS
-
-export function createPoseBuffer(): Float32Array {
-  return new Float32Array(POSE_SIZE)
+export function createPoseBuffer(rig: RigDef): Float32Array {
+  return new Float32Array(rig.poseSize)
 }
 
-export function compileClip(def: ClipDef): Clip {
+export function compileClip<Name extends string>(
+  rig: RigDef<Name>,
+  def: ClipDef<Name>,
+): Clip<Name> {
   if (def.frames.length === 0) throw new Error(`Clip "${def.name}": không có keyframe`)
   const frameCount = def.frames.length
   const times = new Float32Array(frameCount)
-  const data = new Float32Array(frameCount * POSE_SIZE)
+  const data = new Float32Array(frameCount * rig.poseSize)
 
   for (let f = 0; f < frameCount; f++) {
-    const frame = def.frames[f] as KeyframeDef
+    const frame = def.frames[f] as KeyframeDef<Name>
     times[f] = frame.t
     if (f > 0 && frame.t < (times[f - 1] as number)) {
       throw new Error(`Clip "${def.name}": keyframe ${f} có thời gian giảm`)
     }
-    const base = f * POSE_SIZE
-    for (const [jointName, pose] of Object.entries(frame.pose)) {
-      const j = JOINT_INDEX[jointName as JointName]
-      if (j === undefined) throw new Error(`Clip "${def.name}": khớp lạ "${jointName}"`)
+    const base = f * rig.poseSize
+    for (const [jointName, pose] of Object.entries(frame.pose) as Array<[Name, JointPose]>) {
+      const j = rig.index[jointName]
+      if (j === undefined) {
+        throw new Error(`Clip "${def.name}": khớp lạ "${jointName}" (rig "${rig.name}")`)
+      }
       const o = base + j * CHANNELS
       data[o] = pose.rx ?? 0
       data[o + 1] = pose.ry ?? 0
@@ -72,13 +76,14 @@ export function compileClip(def: ClipDef): Clip {
     }
   }
 
-  return { name: def.name, duration: def.duration, loop: def.loop ?? true, times, data }
+  return { name: def.name, duration: def.duration, loop: def.loop ?? true, times, data, rig }
 }
 
 /** Lấy mẫu clip ở thời điểm `time` (giây) vào `out`. */
 export function samplePose(clip: Clip, time: number, out: Float32Array): void {
-  const { times, data, duration, loop } = clip
+  const { times, data, duration, loop, rig } = clip
   const n = times.length
+  const size = rig.poseSize
 
   let t = time
   if (loop && duration > 0) {
@@ -89,7 +94,7 @@ export function samplePose(clip: Clip, time: number, out: Float32Array): void {
   }
 
   if (n === 1) {
-    out.set(data.subarray(0, POSE_SIZE))
+    out.set(data.subarray(0, size))
     return
   }
 
@@ -102,9 +107,9 @@ export function samplePose(clip: Clip, time: number, out: Float32Array): void {
   const span = t1 - t0
   const k = span > 1e-6 ? (t - t0) / span : 0
 
-  const o0 = i * POSE_SIZE
-  const o1 = (i + 1) * POSE_SIZE
-  for (let c = 0; c < POSE_SIZE; c++) {
+  const o0 = i * size
+  const o1 = (i + 1) * size
+  for (let c = 0; c < size; c++) {
     const a = data[o0 + c] as number
     const b = data[o1 + c] as number
     out[c] = a + (b - a) * k
@@ -112,83 +117,91 @@ export function samplePose(clip: Clip, time: number, out: Float32Array): void {
 }
 
 /** out = a + (b - a) * k */
-export function blendPose(
-  a: Float32Array,
-  b: Float32Array,
-  k: number,
-  out: Float32Array,
-): void {
-  for (let c = 0; c < POSE_SIZE; c++) {
+export function blendPose(a: Float32Array, b: Float32Array, k: number, out: Float32Array): void {
+  const n = out.length
+  for (let c = 0; c < n; c++) {
     const va = a[c] as number
     const vb = b[c] as number
     out[c] = va + (vb - va) * k
   }
 }
 
-/** Thế nghỉ dạng phẳng, dùng làm gốc để cộng độ lệch của animation. */
-const REST = (() => {
-  const buf = new Float32Array(POSE_SIZE)
-  for (const name of JOINTS) {
-    const rest = CHIBI_REST[name]
-    const o = JOINT_INDEX[name] * CHANNELS
-    buf[o] = rest.rot?.[0] ?? 0
-    buf[o + 1] = rest.rot?.[1] ?? 0
-    buf[o + 2] = rest.rot?.[2] ?? 0
-    buf[o + 3] = rest.pos[0]
-    buf[o + 4] = rest.pos[1]
-    buf[o + 5] = rest.pos[2]
-  }
-  return buf
-})()
-
 /**
  * Ghi thế vào xương. Animation là ĐỘ LỆCH so với thế nghỉ, nên ở đây cộng vào
- * giá trị nghỉ — nhờ vậy sửa tỉ lệ nhân vật trong CHIBI_REST không làm hỏng clip.
+ * giá trị nghỉ — nhờ vậy sửa tỉ lệ sinh vật trong bảng rest không làm hỏng clip.
  */
-export function applyPose(bones: Record<JointName, Bone>, pose: Float32Array): void {
-  for (const name of JOINTS) {
-    const j = JOINT_INDEX[name]
-    const o = j * CHANNELS
-    const bone = bones[name]
+export function applyPose<Name extends string>(
+  rig: RigDef<Name>,
+  bones: Record<Name, Bone>,
+  pose: Float32Array,
+): void {
+  const rest = rig.restBuffer
+  for (const joint of rig.joints) {
+    const o = rig.index[joint] * CHANNELS
+    const bone = bones[joint]
     bone.rotation.set(
-      (REST[o] as number) + (pose[o] as number),
-      (REST[o + 1] as number) + (pose[o + 1] as number),
-      (REST[o + 2] as number) + (pose[o + 2] as number),
+      (rest[o] as number) + (pose[o] as number),
+      (rest[o + 1] as number) + (pose[o + 1] as number),
+      (rest[o + 2] as number) + (pose[o + 2] as number),
     )
     bone.position.set(
-      (REST[o + 3] as number) + (pose[o + 3] as number),
-      (REST[o + 4] as number) + (pose[o + 4] as number),
-      (REST[o + 5] as number) + (pose[o + 5] as number),
+      (rest[o + 3] as number) + (pose[o + 3] as number),
+      (rest[o + 4] as number) + (pose[o + 4] as number),
+      (rest[o + 5] as number) + (pose[o + 5] as number),
     )
   }
 }
 
 /**
- * Phát clip lên một bộ xương, có crossfade khi đổi clip.
+ * Phát clip lên một bộ xương, có crossfade khi đổi clip và một LỚP PHỦ tuỳ chọn
+ * chỉ ảnh hưởng một số khớp.
+ *
+ * Lớp phủ tồn tại để đánh trong lúc đang chạy: thân trên vung kiếm theo clip
+ * đánh, còn chân vẫn giữ chu kỳ chạy. Không có nó thì mọi đòn đánh đều phải
+ * dừng hẳn di chuyển, và combat mất hết cảm giác trôi chảy.
+ *
  * Ba buffer được cấp phát sẵn và dùng lại mãi -> không sinh rác mỗi frame.
  */
-export class Animator {
+export class Animator<Name extends string> {
   timeScale = 1
 
-  private current: Clip | null = null
-  private previous: Clip | null = null
+  private current: Clip<Name> | null = null
+  private previous: Clip<Name> | null = null
   private currentTime = 0
   private previousTime = 0
   private fadeLeft = 0
   private fadeDuration = 0
 
-  private readonly bufCurrent = createPoseBuffer()
-  private readonly bufPrevious = createPoseBuffer()
-  private readonly bufOut = createPoseBuffer()
+  private overlay: Clip<Name> | null = null
+  private overlayTime = 0
+  private overlayMask: number[] = []
+  private overlayWeight = 1
 
-  constructor(private readonly bones: Record<JointName, Bone>) {}
+  private readonly bufCurrent: Float32Array
+  private readonly bufPrevious: Float32Array
+  private readonly bufOverlay: Float32Array
+  private readonly bufOut: Float32Array
+
+  constructor(
+    private readonly rig: RigDef<Name>,
+    private readonly bones: Record<Name, Bone>,
+  ) {
+    this.bufCurrent = createPoseBuffer(rig)
+    this.bufPrevious = createPoseBuffer(rig)
+    this.bufOverlay = createPoseBuffer(rig)
+    this.bufOut = createPoseBuffer(rig)
+  }
 
   get clipName(): string | null {
     return this.current?.name ?? null
   }
 
-  /** Đổi clip. Gọi lại với clip đang phát là no-op nên gọi mỗi frame vẫn an toàn. */
-  play(clip: Clip, fade = 0.14): void {
+  get overlayName(): string | null {
+    return this.overlay?.name ?? null
+  }
+
+  /** Đổi clip nền. Gọi lại với clip đang phát là no-op nên gọi mỗi frame vẫn an toàn. */
+  play(clip: Clip<Name>, fade = 0.14): void {
     if (this.current === clip) return
     if (this.current && fade > 0) {
       this.previous = this.current
@@ -203,7 +216,27 @@ export class Animator {
     this.currentTime = 0
   }
 
-  /** Nhảy tới một thời điểm trong clip hiện tại — dùng để khớp nhịp bước chân. */
+  /**
+   * Phát một clip chỉ trên `joints` (và mọi khớp con của chúng không tự động —
+   * phải liệt kê rõ khớp nào bị ghi đè).
+   */
+  playOverlay(clip: Clip<Name>, joints: readonly Name[], weight = 1): void {
+    this.overlay = clip
+    this.overlayTime = 0
+    this.overlayWeight = weight
+    this.overlayMask = joints.map((j) => this.rig.index[j])
+  }
+
+  clearOverlay(): void {
+    this.overlay = null
+    this.overlayMask = []
+  }
+
+  /** Lớp phủ đã chạy hết chưa (clip không lặp). */
+  get overlayFinished(): boolean {
+    return this.overlay === null || (!this.overlay.loop && this.overlayTime >= this.overlay.duration)
+  }
+
   setTime(time: number): void {
     this.currentTime = time
   }
@@ -215,6 +248,7 @@ export class Animator {
 
     samplePose(this.current, this.currentTime, this.bufCurrent)
 
+    let base = this.bufCurrent
     if (this.previous && this.fadeLeft > 0) {
       this.previousTime += step
       this.fadeLeft = Math.max(0, this.fadeLeft - dt)
@@ -223,9 +257,26 @@ export class Animator {
       const k = 1 - this.fadeLeft / Math.max(this.fadeDuration, 1e-4)
       blendPose(this.bufPrevious, this.bufCurrent, k, this.bufOut)
       if (this.fadeLeft === 0) this.previous = null
-      applyPose(this.bones, this.bufOut)
-    } else {
-      applyPose(this.bones, this.bufCurrent)
+      base = this.bufOut
     }
+
+    if (this.overlay) {
+      // Lớp phủ dùng dt THẬT, không nhân timeScale: tốc độ đòn đánh không được
+      // đổi theo tốc độ chạy, nếu không thì chạy nhanh sẽ đánh nhanh theo
+      this.overlayTime += dt
+      samplePose(this.overlay, this.overlayTime, this.bufOverlay)
+      if (base !== this.bufOut) this.bufOut.set(base)
+      for (const j of this.overlayMask) {
+        const o = j * CHANNELS
+        for (let c = 0; c < CHANNELS; c++) {
+          const a = this.bufOut[o + c] as number
+          const b = this.bufOverlay[o + c] as number
+          this.bufOut[o + c] = a + (b - a) * this.overlayWeight
+        }
+      }
+      base = this.bufOut
+    }
+
+    applyPose(this.rig, this.bones, base)
   }
 }

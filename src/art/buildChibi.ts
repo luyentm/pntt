@@ -8,7 +8,8 @@ import {
 } from 'three'
 import { Animator } from '@/anim/Clip'
 import { materials } from '@/render/Materials'
-import { ChibiBuilder, type JointName } from './ChibiRig'
+import { RigBuilder } from '@/anim/Rig'
+import { CHIBI_RIG, type ChibiJoint } from './ChibiRig'
 
 export interface ChibiColors {
   /** Áo ngoài / tay áo. */
@@ -40,8 +41,8 @@ export interface Chibi {
   /** Node đặt vào thế giới. Xoay node này để nhân vật quay mặt. */
   root: Group
   mesh: SkinnedMesh
-  bones: Record<JointName, Bone>
-  animator: Animator
+  bones: Record<ChibiJoint, Bone>
+  animator: Animator<ChibiJoint>
   /** Chiều cao thực tế sau khi nhân tỉ lệ, dùng cho HP bar và ngắm chiêu. */
   height: number
 }
@@ -63,7 +64,7 @@ export function buildChibi(params: ChibiParams): Chibi {
   const detail = params.detail ?? 'full'
   const full = detail === 'full'
   const eyeColor = params.eye ?? 0x1b1b22
-  const b = new ChibiBuilder()
+  const b = new RigBuilder(CHIBI_RIG)
 
   // ---------- Đầu ----------
   // Cầu 7x5 mặt: đủ tròn để trông mềm, đủ ít mặt để thấy rõ các facet
@@ -159,7 +160,7 @@ export function buildChibi(params: ChibiParams): Chibi {
   for (const [hipJoint, kneeJoint] of [
     ['hipL', 'kneeL'],
     ['hipR', 'kneeR'],
-  ] as Array<[JointName, JointName]>) {
+  ] as Array<[ChibiJoint, ChibiJoint]>) {
     const thigh = new CylinderGeometry(0.053, 0.047, 0.17, 5)
     thigh.translate(0, -0.085, 0)
     b.add(hipJoint, thigh, params.robeDark)
@@ -177,7 +178,7 @@ export function buildChibi(params: ChibiParams): Chibi {
   for (const [shoulderJoint, elbowJoint] of [
     ['shoulderL', 'elbowL'],
     ['shoulderR', 'elbowR'],
-  ] as Array<[JointName, JointName]>) {
+  ] as Array<[ChibiJoint, ChibiJoint]>) {
     const upperArm = new CylinderGeometry(0.043, 0.039, 0.172, 5)
     upperArm.translate(0, -0.086, 0)
     b.add(shoulderJoint, upperArm, params.robe)
@@ -211,7 +212,7 @@ export function buildChibi(params: ChibiParams): Chibi {
     root,
     mesh,
     bones: skeleton.bones,
-    animator: new Animator(skeleton.bones),
+    animator: new Animator(CHIBI_RIG, skeleton.bones),
     height: 1.1 * height,
   }
 }

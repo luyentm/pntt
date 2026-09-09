@@ -1,4 +1,12 @@
 import { Mesh, Vector3, type BufferGeometry, type Object3D } from 'three'
+import { enemyDef } from '@/game/data/enemies'
+import { Hud } from '@/ui/Hud'
+import { WorldBars } from '@/ui/WorldBars'
+import { Vfx } from '@/vfx/Vfx'
+import { CombatWorld } from './CombatWorld'
+import { Enemy, type EnemyContext } from './Enemy'
+import type { Combatant } from './Combatant'
+import { Palette } from '@/art/Palette'
 import { PropBatch } from '@/art/PropBatch'
 import { buildBoulder, buildGroundMarker, buildStoneFloor } from '@/art/props/nature'
 import { bambooGeometry, pineGeometry, rockGeometry } from '@/art/props/geometries'
@@ -12,7 +20,7 @@ import { materials } from '@/render/Materials'
 import { CollisionWorld, type StaticBody } from './Collision'
 import { Player } from './Player'
 import { Terrain } from './Terrain'
-import type { GameScene, SceneContext } from './Scene'
+import type { GameScene, SceneContext, SceneDebugActions } from './Scene'
 
 const FLOOR_RADIUS = 6.2
 const PILLAR_RING = 9.2
@@ -34,11 +42,48 @@ export class ArenaScene implements GameScene {
   readonly collision = new CollisionWorld()
   terrain!: Terrain
   player!: Player
+  combat!: CombatWorld
+  readonly enemies: Enemy[] = []
 
   private ctx!: SceneContext
   private readonly objects: Object3D[] = []
   private marker?: Mesh
   private readonly cursor = new Vector3()
+  private vfx!: Vfx
+  private hud!: Hud
+  private bars!: WorldBars
+  private enemyCtx!: EnemyContext
+  private lastHp = -1
+  private lastMp = -1
+  private respawnTimer = 0
+  private godMode = false
+
+  /** Điều khiển debug — bảng lil-gui đọc từ đây. */
+  readonly debug: SceneDebugActions = {
+    spawnEnemies: (id, count) => {
+      for (let i = 0; i < count; i++) {
+        // Sinh quanh người chơi nhưng chừa khoảng để không đè lên đầu
+        const p = this.ctx.rng.inAnnulus(4, 11)
+        this.spawnEnemy(id, this.player.pos.x + p.x, this.player.pos.z + p.z, this.ctx.rng)
+      }
+    },
+    killAllEnemies: () => {
+      for (const enemy of this.enemies) {
+        if (enemy.combatant.dead) continue
+        this.combat.strike(this.player.combatant, enemy.combatant, 99999)
+      }
+    },
+    healPlayer: () => {
+      const me = this.player.combatant
+      me.hp = me.stats.maxSinhLuc
+      this.player.linhLuc = me.stats.maxLinhLuc
+    },
+    setGodMode: (on) => {
+      this.godMode = on
+    },
+    enemyCount: () => this.enemies.length,
+    aliveEnemyCount: () => this.combat.countAlive('enemy'),
+  }
 
   load(ctx: SceneContext): void {
     this.ctx = ctx
@@ -63,12 +108,69 @@ export class ArenaScene implements GameScene {
     this.player.spawn(0, GATE_DISTANCE - 5, Math.PI)
     this.add(this.player.chibi.root)
 
-    this.marker = buildGroundMarker(0.7)
+    this.marker = buildGroundMarker(0.52)
     this.add(this.marker)
+
+    this.combat = new CombatWorld(ctx.bus, rng)
+    this.combat.add(this.player.combatant)
+
+    this.enemyCtx = {
+      world: this.combat,
+      collision: this.collision,
+      ground: this.terrain,
+      rng,
+    }
+
+    const uiRoot = document.getElementById('ui-root')
+    if (!uiRoot) throw new Error('ArenaScene: thiếu #ui-root')
+    this.vfx = new Vfx(three, uiRoot, ctx.bus, rng)
+    this.hud = new Hud(uiRoot, ctx.bus)
+    this.hud.setRealm(this.player.realm)
+    this.bars = new WorldBars(uiRoot)
+
+    // Vệt chém do VFX vẽ khi nghe sự kiện, nên hệ chiến đấu không biết VFX tồn tại
+    ctx.bus.on('combat:swing', (e) => {
+      this.vfx.spawnSlash(
+        e.x,
+        e.y,
+        e.z,
+        e.facing,
+        e.radius,
+        e.side === 'player' ? Palette.linh : Palette.maHuyet,
+      )
+    })
+    ctx.bus.on('combat:hit', () => {
+      // Thanh máu chỉ hiện cho con vừa bị đánh — xem WorldBars
+      for (const c of this.combat.all) {
+        if (c.invuln > 0 && c.side !== 'player') this.bars.notifyHit(c)
+      }
+    })
+
+    this.spawnWave(rng)
 
     camera.snapTo(this.player.pos.x, this.player.y + 0.9, this.player.pos.z)
     three.updateMatrixWorld(true)
     ctx.bus.emit('scene:loaded', { name: this.name })
+  }
+
+  /** Rải quái quanh luyện võ trường. */
+  private spawnWave(rng: SceneContext['rng']): void {
+    for (let i = 0; i < 9; i++) {
+      const p = rng.inAnnulus(9, 24)
+      this.spawnEnemy('yeuThu', p.x, p.z, rng)
+    }
+    for (let i = 0; i < 4; i++) {
+      const p = rng.inAnnulus(15, 30)
+      this.spawnEnemy('hacLang', p.x, p.z, rng)
+    }
+  }
+
+  spawnEnemy(id: string, x: number, z: number, rng: SceneContext['rng']): Enemy {
+    const enemy = new Enemy(enemyDef(id), x, z, this.terrain, rng)
+    this.enemies.push(enemy)
+    this.combat.add(enemy.combatant)
+    this.ctx.three.add(enemy.combatant.root)
+    return enemy
   }
 
   private groundAt(x: number, z: number): number {
@@ -224,14 +326,87 @@ export class ArenaScene implements GameScene {
   }
 
   fixedUpdate(dt: number): void {
-    const { input, camera } = this.ctx
-    this.player.fixedUpdate(dt, input, camera, this.collision)
+    const { input, camera, bus } = this.ctx
+
+    // Chỉ mục không gian phải dựng LẠI TRƯỚC mọi truy vấn của bước này, nếu
+    // không thì hitbox sẽ tìm theo vị trí của frame trước
+    this.combat.rebuildIndex()
+
+    // God mode dùng chính cơ chế miễn thương đã có, thay vì thêm một nhánh
+    // đặc biệt trong đường gây sát thương
+    if (this.godMode) this.player.combatant.invuln = 1
+
+    this.player.fixedUpdate(dt, input, camera, this.collision, this.combat)
+    for (const enemy of this.enemies) enemy.fixedUpdate(dt, this.enemyCtx)
+
+    // Tách đàn SAU khi mọi thứ đã di chuyển, để không con nào bị xử lý hai lần
+    this.combat.resolveCrowding()
+    for (const enemy of this.enemies) enemy.combatant.applyTransform()
+    this.player.combatant.applyTransform()
+
+    this.reap()
+    this.publishVitals(bus)
+    this.handleDeath(dt)
+
     camera.follow(this.player.pos.x, this.player.y + 0.9, this.player.pos.z)
+  }
+
+  /** Tháo xác đã hết thời gian khỏi scene và khỏi danh sách quái. */
+  private reap(): void {
+    const removed = this.combat.reapCorpses()
+    if (removed.length === 0) return
+    const removedSet = new Set<Combatant>(removed)
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const enemy = this.enemies[i] as Enemy
+      if (!removedSet.has(enemy.combatant)) continue
+      this.ctx.three.remove(enemy.combatant.root)
+      this.enemies.splice(i, 1)
+    }
+  }
+
+  /** Chỉ phát sự kiện khi số THỰC SỰ đổi — HUD không cần cập nhật 60 lần/giây. */
+  private publishVitals(bus: SceneContext['bus']): void {
+    const me = this.player.combatant
+    const hp = Math.ceil(me.hp)
+    const mp = Math.ceil(this.player.linhLuc)
+    if (hp === this.lastHp && mp === this.lastMp) return
+    this.lastHp = hp
+    this.lastMp = mp
+    bus.emit('player:vitals', {
+      sinhLuc: me.hp,
+      maxSinhLuc: me.stats.maxSinhLuc,
+      linhLuc: this.player.linhLuc,
+      maxLinhLuc: me.stats.maxLinhLuc,
+    })
+  }
+
+  /**
+   * M3: chết thì hồi sinh ở cổng phái sau 2.5 giây.
+   * Màn hình thua và hình phạt tử vong là việc của M8; hiện tại hồi sinh nhanh
+   * để việc thử combat không bị chặn.
+   */
+  private handleDeath(dt: number): void {
+    if (!this.player.combatant.dead) {
+      this.respawnTimer = 0
+      return
+    }
+    this.respawnTimer += dt
+    if (this.respawnTimer < 2.5) return
+    this.respawnTimer = 0
+    this.player.revive(0, GATE_DISTANCE - 5, Math.PI)
+    this.ctx.bus.emit('toast', { text: 'Trọng thương, lui về cổng phái', kind: 'bad' })
   }
 
   render(_alpha: number, frameDt: number): void {
     const { input, camera } = this.ctx
     this.player.render(frameDt)
+    for (const enemy of this.enemies) enemy.render(frameDt)
+
+    const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
+    const w = canvas?.clientWidth ?? window.innerWidth
+    const h = canvas?.clientHeight ?? window.innerHeight
+    this.vfx.update(frameDt, camera.camera, w, h)
+    this.bars.update(frameDt, this.combat.all, camera.camera, w, h)
 
     if (this.marker) {
       if (camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.cursor, this.player.y)) {
@@ -253,8 +428,14 @@ export class ArenaScene implements GameScene {
         if (child instanceof Mesh) (child.geometry as BufferGeometry).dispose()
       })
     }
+    for (const enemy of this.enemies) this.ctx.three.remove(enemy.combatant.root)
+    this.enemies.length = 0
     this.objects.length = 0
     this.collision.clear()
+    this.combat.clear()
+    this.vfx.dispose()
+    this.hud.dispose()
+    this.bars.dispose()
     this.ctx.bus.emit('scene:unloaded', { name: this.name })
   }
 }

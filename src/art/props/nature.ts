@@ -74,9 +74,11 @@ export function buildStoneFloor(radius = 6): Mesh {
 
 /** Vòng sáng đánh dấu vị trí chuột trên mặt đất. */
 export function buildGroundMarker(radius = 0.6): Mesh {
-  const geo = new RingGeometry(radius * 0.72, radius, 16)
+  // Vòng MẢNH và mờ: đây là con trỏ, nó phải chỉ được chỗ đang ngắm mà không
+  // giành sự chú ý với nhân vật và quái
+  const geo = new RingGeometry(radius * 0.88, radius, 20)
   geo.rotateX(-Math.PI / 2)
-  const mesh = new Mesh(geo, materials.glow(Palette.linh, 0.55))
+  const mesh = new Mesh(geo, materials.glow(Palette.linh, 0.34))
   mesh.name = 'groundMarker'
   mesh.renderOrder = 5
   return mesh

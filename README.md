@@ -27,6 +27,7 @@ Mở http://localhost:5173
 | Cuộn chuột | Zoom |
 | `` ` `` | Ẩn/hiện bảng debug |
 | WASD / phím mũi tên | Di chuyển (theo hướng camera) |
+| Chuột trái (hoặc `J`) | Chém — bấm liên tiếp để nối combo 3 nhát. Giữ để chém liên tục |
 | Giữ Shift | Đi chậm |
 | `1`–`6` | Pháp thuật *(từ M4)* |
 
@@ -67,10 +68,17 @@ tùng / khóm tre / hòn đá tốn **9 draw call** thay vì 276.
 
 ### Thư viện
 
-`three` 0.185.1 · `postprocessing` (outline + bloom) · `yuka` (AI + navmesh) ·
-`miniplex` (ECS) · `troika-three-text` (chữ 3D có dấu) · `lil-gui` (debug).
+`three` 0.185.1 · `postprocessing` (outline + bloom) · `lil-gui` (debug) · `vitest`.
 
 > Ghim three ở **0.185.1** vì `postprocessing` yêu cầu `three >= 0.168 < 0.186`.
+
+**Ba thư viện dự kiến ban đầu đã bị loại sau khi va vào yêu cầu thật:**
+
+| Thư viện | Lý do loại |
+|---|---|
+| `yuka` (AI) | Tách đàn của nó cần `vehicle.neighbors` do `EntityManager` riêng của nó điền → phải nuôi **hai** chỉ mục không gian và đồng bộ vị trí qua lại mỗi frame, trong khi hitbox đã cần một chỉ mục sẵn. Thêm nữa nó dùng `Math.random()` ở 10 chỗ (kể cả `WanderBehavior`), phá tính xác định mà cả game được thiết kế quanh. Điểm mạnh riêng của nó là tìm đường navmesh — đấu trường mở không cần. Tự viết steering hết ~120 dòng. |
+| `miniplex` (ECS) | Các thực thể ở đây là những **hồ đồng dạng** (quái, đồng môn, người chơi), không phải tập hợp component thay đổi bất thường. ECS chỉ tiết kiệm được vài chục dòng kiểm tra `if (e.health)`, mà nó KHÔNG giải bài toán chỉ mục không gian — thứ vẫn phải tự viết. Một lớp có kiểu rõ ràng đọc và gỡ lỗi dễ hơn. |
+| `troika-three-text` | Giải font bằng cách **tải từ CDN** (`cdn.jsdelivr.net/gh/lojjic/unicode-font-resolver`) lúc chạy, phá vỡ nguyên tắc "không asset ngoài, chạy offline" — mà tiếng Việt có dấu lại là thứ phụ thuộc CDN đó nhiều nhất. Số sát thương chuyển sang **DOM overlay**: nét căng ở mọi zoom, đủ dấu miễn phí, không tốn draw call. |
 
 ### Nét viền (`render/effects/EdgeOutlineEffect.ts`)
 
@@ -108,6 +116,18 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - Nhân vật hướng **+Z**. Trong animation: `rx` âm = đưa chi ra trước, gập đầu gối =
   `rx` dương, gập khuỷu = `rx` âm.
 - Cự ly camera **17 unit**. Thử 30 thì chibi chỉ còn ~35px, mất hết chi tiết.
+- Hitbox đòn đánh là **hình quạt**, không phải hình tròn — và góc quạt được nới
+  theo bán kính mục tiêu, nếu không thì boss to đứng sát cạnh vẫn lọt khỏi đòn.
+- `Enemy` phải lấy tốc độ từ `combatant.stats.toc`, KHÔNG từ `def.base.toc`. Đọc
+  chỉ số nền thì mọi hiệu ứng lên tốc độ (làm chậm, tăng tốc) đều vô tác dụng —
+  một lỗi im lặng rất khó phát hiện.
+- `resolve()` của va chạm **cộng dồn kiểu Jacobi**; đẩy tuần tự từng vật cản bị
+  zig-zag khi kẹt giữa hai vật và hội tụ rất chậm.
+- Đòn đánh của người là **lớp phủ** chỉ trên thân trên, nên chân vẫn giữ chu kỳ
+  chạy → đánh được trong lúc di chuyển. Thú vồ bằng cả người nên dùng clip toàn thân.
+- Có **hỗ trợ ngắm mềm** (nửa góc 60°): ngắm hoàn toàn theo con trỏ rất dễ trượt
+  khi tay đang bấm WASD, và một nhát trượt vì lệch 10° đọc ra là "game không nhận
+  input" chứ không phải "mình ngắm sai".
 - **Kiến trúc phải theo tỉ lệ CHIBI, không theo tỉ lệ người thật.** Cổng phái cao
   5.2 và cột đá cao 4.4 (đúng tỉ lệ thật) làm nhân vật cao 1.1 trông như con sâu và
   chắn mất khung hình. Cổng 3.2, cột 2.9, đèn 1.6 mới đúng.
@@ -126,7 +146,7 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - [x] **M0** Scaffold — renderer, camera iso, trời + sương mù, vòng lặp 60Hz, outline, bloom, debug panel
 - [x] **M1** Hàn Lập chibi + di chuyển — rig xương, clip idle/walk/run, controller theo hướng camera, va chạm
 - [x] **M2** Map sơn môn — terrain noise, cổng phái, đèn đá, đài luyện đan, rừng tùng + khóm tre (instanced)
-- [ ] **M3** Combat cơ bản
+- [x] **M3** Combat cơ bản — combo 3 nhát, hitbox hình quạt, AI quái, thanh máu, HUD, VFX
 - [ ] **M4** Pháp thuật & VFX
 - [ ] **M5** Tu luyện & đột phá cảnh giới
 - [ ] **M6** Vật phẩm, túi đồ, luyện đan

@@ -1,3 +1,4 @@
+import { CHIBI_RIG, type ChibiJoint } from '@/art/ChibiRig'
 import { compileClip, type Clip } from '../Clip'
 
 /**
@@ -10,7 +11,7 @@ import { compileClip, type Clip } from '../Clip'
  */
 
 /** Đứng yên: hơi thở, đầu nhấp nhẹ. Chu kỳ dài để không thấy lặp. */
-export const IDLE: Clip = compileClip({
+export const IDLE: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
   name: 'idle',
   duration: 3.4,
   frames: [
@@ -49,7 +50,7 @@ export const IDLE: Clip = compileClip({
 })
 
 /** Đi bộ. 5 key cho một chu kỳ: tiếp đất L, vượt, tiếp đất R, vượt, quay lại. */
-export const WALK: Clip = compileClip({
+export const WALK: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
   name: 'walk',
   duration: 0.92,
   frames: [
@@ -133,7 +134,7 @@ export const WALK: Clip = compileClip({
 })
 
 /** Chạy: ngả người ra trước, biên độ lớn, khuỷu gập cao, nhấp nhô mạnh. */
-export const RUN: Clip = compileClip({
+export const RUN: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
   name: 'run',
   duration: 0.6,
   frames: [
