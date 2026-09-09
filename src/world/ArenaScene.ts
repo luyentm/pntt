@@ -24,7 +24,7 @@ import type { Panel } from '@/ui/panels/Panel'
 import { Vfx } from '@/vfx/Vfx'
 import { Crowd } from './Crowd'
 import { PickupSystem } from './Pickups'
-import { SwordStorm } from './SwordStorm'
+import { SwordStorm, SWORD_COUNT } from './SwordStorm'
 import { CombatWorld } from './CombatWorld'
 import { ProjectileSystem } from './Projectile'
 import { Agent, type AgentContext } from './Agent'
@@ -70,6 +70,29 @@ const RUN_TRAIL = { width: 0.12, opacity: 0.7, fade: 0.22, step: 0.2 } as const
  * sau. Bước 0.34 cho dải dài tới ~6 unit ở 18 điểm xương sống.
  */
 const FLY_TRAIL = { width: 0.24, opacity: 0.9, fade: 0.45, step: 0.34 } as const
+
+/**
+ * Vệt của từng thanh trong 33 kiếm trúc: MẢNH và NGẮN.
+ *
+ * Mảnh vì có tới 33 cái cùng lúc — để bề rộng như vệt phi hành thì ba vòng kiếm
+ * nhoè thành một cái đĩa sáng đặc và không còn thấy thanh kiếm nào.
+ *
+ * Ngắn bằng `points`, KHÔNG bằng `step`. Đây là chỗ tôi làm sai lần đầu: đặt
+ * `step` 0.13 để vệt ngắn, nhưng kiếm quay 0.23–0.34 unit mỗi khung — nhanh hơn
+ * bước — nên khung nào cũng chốt điểm và giãn cách thật là quãng-đi-một-khung.
+ * Vệt dài 16 × 0.28 ≈ 4.5 unit, dài hơn cả khoảng 3.4 unit giữa hai thanh, và
+ * ba vòng kiếm khép lại thành BA VÒNG TRÒN LIỀN — đọc ra là một pháp trận đứng
+ * yên, không phải 33 vật thể đang bay.
+ *
+ * 7 điểm × ~0.28 ≈ 1.7 unit, tức khoảng 16° ở bán kính 6. Mỗi vòng 11 thanh
+ * cách nhau 32.7°, nên vệt phủ chừng một nửa khoảng giữa hai thanh: ra vòng
+ * xoáy ĐỨT NÉT, thấy rõ từng thanh kiếm mà vẫn có cảm giác cả đàn đang cuốn.
+ *
+ * `step` 0.2 để hơi DƯỚI quãng-đi-một-khung ở 60fps: lúc đó ở 60fps nó chốt mỗi
+ * khung (giãn cách đúng bằng quãng đi, không vượt), còn ở fps cao hơn nó chốt
+ * thưa hơn với cùng giãn cách — nên chiều dài vệt không đổi theo fps.
+ */
+const SWORD_TRAIL = { width: 0.075, opacity: 0.62, fade: 0.2, step: 0.2, points: 7 } as const
 
 /**
  * Khe hở tối thiểu giữa hai vật cản, tính bằng world unit.
@@ -421,6 +444,16 @@ export class ArenaScene implements GameScene {
     }
     this.projectiles.onTrailEnd = (serial) => {
       this.vfx.follow(`proj:${serial}`, false, 0, 0, 0)
+    }
+
+    // Vệt của 33 kiếm trúc — khoá theo chỗ trong đội hình, cố định suốt lượt chiêu
+    this.swords.onSwordTrail = (seat, x, y, z) => {
+      this.vfx.follow(`sword:${seat}`, true, x, y, z, SWORD_TRAIL)
+    }
+    this.swords.onSwordsEnd = () => {
+      for (let seat = 0; seat < SWORD_COUNT; seat++) {
+        this.vfx.follow(`sword:${seat}`, false, 0, 0, 0)
+      }
     }
 
     // Vệt chém do VFX vẽ khi nghe sự kiện, nên hệ chiến đấu không biết VFX tồn tại

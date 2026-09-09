@@ -12,8 +12,20 @@ import {
 } from 'three'
 import { Palette } from '@/art/Palette'
 
-/** Số vệt tối đa cùng tồn tại. */
-export const TRAIL_CAPACITY = 28
+/**
+ * Số vệt tối đa cùng tồn tại.
+ *
+ * 64 chứ không 28: Thanh Trúc Phong Vân Kiếm một mình đã cần 33 ô, và nó phát
+ * được giữa lúc đang chạy (1 ô), đang có cả đàn phi hành khí bay (tới ~12 ô) và
+ * đang chém (1 ô một lần). Ở 28 thì đàn kiếm chiếm hết hồ và `pick()` bắt đầu
+ * cắt vệt của những thứ khác — mà cắt vệt đang bám thì nó MẤT ĐỘT NGỘT giữa
+ * đường, chứ không tan.
+ *
+ * Chi phí của việc để rộng gần bằng không: hình học được cấp sẵn toàn bộ, và ô
+ * không dùng bị gộp về một điểm nên tam giác của nó có diện tích 0 — GPU không
+ * tô pixel nào, chỉ chạy đỉnh. 64 ô là 2304 đỉnh và 2176 tam giác.
+ */
+export const TRAIL_CAPACITY = 64
 /** Số điểm xương sống của một vệt. Nhiều hơn = vệt dài và mượt hơn, tốn hơn. */
 export const TRAIL_SEGMENTS = 18
 
@@ -42,6 +54,8 @@ interface Trail {
   width: number
   opacity: number
   step: number
+  /** Số điểm xương sống vệt này được dùng, 2..SEGMENTS. */
+  points: number
   head: Color
   tail: Color
   /** Số điểm xương sống đã ghi (≤ SEGMENTS). */
@@ -63,11 +77,26 @@ export interface TrailOptions {
   /**
    * Khoảng cách tối thiểu giữa hai điểm xương sống, world unit.
    *
-   * Đây là cái quyết định vệt DÀI bao nhiêu: chiều dài tối đa là
-   * `step × (SEGMENTS − 1)`. Để quá nhỏ thì đứng yên lắc nhẹ cũng đủ đẩy hết
-   * điểm cũ ra và vệt teo về một cục ngay dưới chân.
+   * Cùng với `points`, đây là cái quyết định vệt DÀI bao nhiêu. Để quá nhỏ thì
+   * đứng yên lắc nhẹ cũng đủ đẩy hết điểm cũ ra và vệt teo về một cục ngay dưới
+   * chân.
+   *
+   * Nó là giãn cách TỐI THIỂU, không phải giãn cách thật. Vật thể đi nhanh hơn
+   * `step` trong một khung thì khung nào cũng chốt, và giãn cách thật hoá thành
+   * quãng-đi-một-khung — tức là chiều dài vệt phụ thuộc fps. Nên với vật thể đi
+   * nhanh, hãy đặt `step` ≥ quãng nó đi trong một khung ở 60fps; lúc đó ở fps
+   * cao hơn nó chỉ chốt thưa hơn và chiều dài giữ nguyên.
    */
   step?: number
+  /**
+   * Số điểm xương sống vệt này được dùng, 2..`TRAIL_SEGMENTS`. Mặc định dùng hết.
+   *
+   * Đây là cách làm vệt NGẮN đúng đắn. Hạ `step` thì KHÔNG ngắn được vệt của
+   * vật thể đi nhanh, vì `step` chỉ là giãn cách tối thiểu (xem trên) — 33 kiếm
+   * trúc quay 0,26 unit mỗi khung, nên dù đặt `step` 0,13 thì vệt vẫn dài
+   * 16 × 0,26 = 4,2 unit và ba vòng kiếm khép lại thành ba vòng tròn liền.
+   */
+  points?: number
 }
 
 /** Handle rỗng — `feed`/`release` với nó là không làm gì. */
@@ -165,6 +194,7 @@ export class RibbonTrailLayer {
         width: 0.1,
         opacity: 0.9,
         step: 0.16,
+        points: SEGMENTS,
         head: new Color(Palette.vetVang),
         tail: new Color(Palette.vetLuc),
         count: 0,
@@ -195,6 +225,7 @@ export class RibbonTrailLayer {
     t.opacity = options.opacity ?? 0.85
     t.fade = options.fade ?? 0.3
     t.step = options.step ?? 0.16
+    t.points = Math.max(2, Math.min(SEGMENTS, Math.round(options.points ?? SEGMENTS)))
     return this.pack(index, t.gen)
   }
 
@@ -251,7 +282,7 @@ export class RibbonTrailLayer {
       s[3] = x
       s[4] = y
       s[5] = z
-      if (t.count < SEGMENTS) t.count++
+      if (t.count < t.points) t.count++
     }
     s[0] = x
     s[1] = y
@@ -283,9 +314,9 @@ export class RibbonTrailLayer {
     const handle = this.attach(options)
     const t = this.resolve(handle)!
     const s = t.spine
-    for (let i = 0; i < SEGMENTS; i++) {
+    for (let i = 0; i < t.points; i++) {
       // Lấy mẫu lại tuyến tính: u chạy 0..1 trên đường gốc
-      const u = (i / (SEGMENTS - 1)) * (count - 1)
+      const u = (i / (t.points - 1)) * (count - 1)
       const i0 = Math.min(count - 1, Math.floor(u))
       const i1 = Math.min(count - 1, i0 + 1)
       const f = u - i0
@@ -295,7 +326,7 @@ export class RibbonTrailLayer {
         s[i * 3 + k] = a + (b - a) * f
       }
     }
-    t.count = SEGMENTS
+    t.count = t.points
     t.released = true
   }
 
@@ -405,7 +436,10 @@ export class RibbonTrailLayer {
     const pos = this.positions
     const col = this.colors
     const s = t.spine
-    const last = t.count - 1
+    // Các điểm ngoài `points` bị gộp hết về điểm cuối, thành tam giác diện tích
+    // 0 — vệt ngắn không tốn một pixel nào cho phần nó không dùng
+    const used = Math.min(t.count, t.points)
+    const last = used - 1
     const base = index * VERTS_PER_TRAIL
     // Bề rộng co lại khi tan, nhưng chậm hơn độ mờ: vệt mảnh dần rồi mới mất
     const widthScale = 0.35 + 0.65 * fadeOut
@@ -468,7 +502,7 @@ export class RibbonTrailLayer {
 
       // u = 0 ở đầu vệt, 1 ở đuôi. Thóp về đuôi là thứ làm nó đọc ra "vệt" chứ
       // không phải "cái ống": mắt đọc bề rộng thu hẹp thành hướng chuyển động.
-      const u = i / (SEGMENTS - 1)
+      const u = last > 0 ? Math.min(1, i / last) : 1
       const w = t.width * (1 - u) ** 0.65 * widthScale
       const o = base + i * 2
       const p0 = o * 3

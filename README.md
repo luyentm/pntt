@@ -384,6 +384,13 @@ Bốn quyết định hình học, mỗi cái sửa một cách vệt trông sai
 - **Điểm chưa dùng bị gộp vào điểm cuối** thành tam giác diện tích 0, nên GPU không tô một
   pixel nào — rẻ hơn để chúng ở đâu đó với alpha 0.
 
+**`step` KHÔNG dùng để làm vệt ngắn.** Nó là giãn cách *tối thiểu* giữa hai điểm xương sống,
+nên với vật thể đi nhanh hơn `step` trong một khung thì khung nào cũng chốt điểm và giãn
+cách thật hoá thành quãng-đi-một-khung — tức chiều dài vệt phụ thuộc fps và không hạ được
+bằng `step`. Đó là lý do có tuỳ chọn `points` (số điểm vệt được dùng, 2..18): muốn ngắn thì
+bớt điểm. Còn `step` nên đặt hơi DƯỚI quãng-đi-một-khung ở 60fps, để ở 60fps nó chốt mỗi
+khung mà không vượt bước, và ở fps cao hơn nó chốt thưa hơn với cùng giãn cách.
+
 **Lỗi thật, và nó không hề báo lỗi.** Điểm 0 của xương sống là "đầu sống": nó bị ghi lại
 bằng vị trí hiện tại MỖI khung, vì nếu chỉ ghi khi đã đi đủ một bước thì đầu vệt tụt lại
 sau vật thể tới cả bước và trông như dải bị đứt khỏi thanh kiếm. Bản đầu lại đo khoảng cách
@@ -424,8 +431,32 @@ vẽ **hai lượt** — pass nét viền khai báo `EffectAttribute.DEPTH` nên
 một lượt render depth riêng cho cả cảnh, và mọi hình khối trong game đều bị vẽ hai lượt như
 vậy. Chi phí không đổi theo số vệt đang sống vì hình học được cấp sẵn toàn bộ.
 
-Chưa làm: 33 thanh Thanh Trúc Phong Vân Kiếm chưa có vệt — 33 dải vượt hạn mức 28, nên nó
-cần một hạn mức riêng hoặc chỉ gắn vệt cho một phần số kiếm.
+**33 kiếm trúc.** Hạn mức hồ nâng từ 28 lên 64: riêng Thanh Trúc Phong Vân Kiếm đã cần 33 ô,
+mà nó phát được giữa lúc đang chạy, đang có đàn phi hành khí bay và đang chém. Ở 28 thì đàn
+kiếm chiếm hết hồ và `pick()` bắt đầu cắt vệt của những thứ khác — mà cắt vệt *đang bám* thì
+nó mất đột ngột giữa đường chứ không tan. `pick()` luôn ưu tiên cắt vệt ĐANG TAN trước, nên
+thứ tự hy sinh là đúng; nâng hạn mức chỉ để nó gần như không bao giờ phải hy sinh gì.
+
+Nới rộng gần như miễn phí vì hình học cấp sẵn toàn bộ và ô không dùng có diện tích 0. Đo được:
+33 vệt cùng lúc là **+2 draw call và +4352 tam giác** trên tổng ~111 nghìn (3,9%), và con số
+đó KHÔNG đổi theo số vệt đang sống.
+
+`SwordStorm` không biết VFX tồn tại — nó nhả vị trí qua hai hook `onSwordTrail(seat, x, y, z)`
+(gọi trong `render`, không phải `fixedUpdate`: vệt là hình ảnh, nhả theo nhịp 60Hz thì ở máy
+chạy trên 60fps đầu vệt giật lùi so với thanh kiếm đã nội suy) và `onSwordsEnd()`. Danh tính
+là `seat` — chỗ trong đội hình, cố định suốt lượt chiêu — nên không phải cấp số thứ tự như
+phi hành khí. `onSwordsEnd` phải gọi cả khi **phát lại** chiêu, không chỉ khi nó tan: phát lại
+lúc đang chạy thì đàn kiếm nhảy về bán kính tụ, và vệt đang bám sẽ vẽ 33 nan hoa từ vành vòng
+cũ về sát người.
+
+Lấy vị trí **mũi kiếm** (`r + BLADE_REACH × 0.5`), không phải tâm thân kiếm: lưỡi với ra ngoài
+vòng bay, nên vệt xuất phát từ tâm sẽ nằm lệch vào trong so với chỗ mắt đang thấy lưỡi quét qua.
+
+Lần đầu tôi đặt `step` 0.13 cho vệt ngắn và được **ba vòng tròn liền** — một pháp trận đứng
+yên, không phải 33 vật thể đang bay. Kiếm quay 0,23–0,34 unit mỗi khung, nhanh hơn bước, nên
+vệt vẫn dài 16 × 0,28 ≈ 4,5 unit trong khi khoảng cách giữa hai thanh chỉ 3,4 unit. Sửa bằng
+`points: 7` → vệt ~1,7 unit ≈ 16° ở bán kính 6, phủ chừng nửa khoảng giữa hai thanh: ra vòng
+xoáy **đứt nét**, thấy rõ từng thanh kiếm mà vẫn có cảm giác cả đàn đang cuốn.
 
 ### Chế độ trình diễn thần thông
 

@@ -136,6 +136,50 @@ describe('RibbonTrailLayer — xương sống', () => {
     expect(headX - tailX).toBeCloseTo(TRAIL_SEGMENTS - 2, 4)
   })
 
+  it('points làm vệt NGẮN — thứ mà hạ step không làm được', () => {
+    // Lỗi thật: 33 kiếm trúc quay nhanh hơn `step` mỗi khung, nên khung nào cũng
+    // chốt điểm và giãn cách thật là quãng-đi-một-khung, không phải `step`. Hạ
+    // `step` không ngắn được vệt, và ba vòng kiếm khép thành ba vòng tròn liền.
+    const cam = makeCamera()
+    const perFrame = 0.3 // đi nhanh hơn step 0.1 -> khung nào cũng chốt
+    const doVet = (points?: number): number => {
+      const layer = new RibbonTrailLayer()
+      const h = layer.attach({ step: 0.1, width: 0.3, fade: 5, ...(points ? { points } : {}) })
+      for (let i = 0; i < 40; i++) layer.feed(h, i * perFrame, 0, 0)
+      layer.update(0.016, cam)
+      const { pos } = attrs(layer)
+      const head = (pos.getX(0) + pos.getX(1)) / 2
+      let xa = head
+      for (let i = 0; i < TRAIL_SEGMENTS; i++) {
+        const mx = (pos.getX(i * 2) + pos.getX(i * 2 + 1)) / 2
+        if (mx < xa) xa = mx
+      }
+      return head - xa
+    }
+    const dayDu = doVet()
+    const ngan = doVet(7)
+    // Hạ step KHÔNG ngắn được: vệt đầy đủ vẫn dài đúng 16 giãn cách thật
+    expect(dayDu).toBeCloseTo((TRAIL_SEGMENTS - 2) * perFrame, 3)
+    // Còn points thì ngắn được: 7 điểm chỉ trải 5 giãn cách (mất 1 vì điểm vừa
+    // chốt trùng đầu vệt)
+    expect(ngan).toBeCloseTo((7 - 2) * perFrame, 3)
+  })
+
+  it('đỉnh ngoài points bị gộp về điểm cuối và tắt alpha', () => {
+    const layer = new RibbonTrailLayer()
+    const cam = makeCamera()
+    const h = layer.attach({ step: 0.1, opacity: 1, fade: 5, points: 6 })
+    for (let i = 0; i < 30; i++) layer.feed(h, i * 0.3, 0, 0)
+    layer.update(0.016, cam)
+
+    const { pos, col } = attrs(layer)
+    const cuoiX = (pos.getX(10) + pos.getX(11)) / 2 // điểm 5 = điểm cuối được dùng
+    for (let i = 6; i < TRAIL_SEGMENTS; i++) {
+      expect(alphaAt(col, 0, i * 2)).toBe(0)
+      expect((pos.getX(i * 2) + pos.getX(i * 2 + 1)) / 2).toBeCloseTo(cuoiX, 4)
+    }
+  })
+
   it('mọi toạ độ đều hữu hạn kể cả khi mọi điểm trùng nhau', () => {
     const layer = new RibbonTrailLayer()
     const cam = makeCamera()

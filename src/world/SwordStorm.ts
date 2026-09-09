@@ -121,8 +121,31 @@ export class SwordStorm {
     return this.active
   }
 
+  /**
+   * Vị trí thanh kiếm thứ `seat` ở khung hình này. VFX vẽ vệt đuôi từ đây.
+   *
+   * Gọi trong `render`, không phải `fixedUpdate`: vệt là hình ảnh, và nhả theo
+   * nhịp bước cố định 60Hz thì ở máy chạy trên 60fps đầu vệt sẽ giật lùi so với
+   * thanh kiếm đã được nội suy.
+   *
+   * `seat` là chỗ trong ĐỘI HÌNH nên nó cố định suốt một lượt chiêu — đó là
+   * danh tính mà vệt cần, và nó có sẵn nên không phải cấp số thứ tự như phi
+   * hành khí.
+   */
+  onSwordTrail?: (seat: number, x: number, y: number, z: number) => void
+
+  /**
+   * Đàn kiếm vừa tan (hoặc vừa bị làm mới). VFX thả toàn bộ vệt.
+   *
+   * Phải gọi cả khi LÀM MỚI, không chỉ khi tan: phát lại lúc đang chạy thì đàn
+   * kiếm nhảy về bán kính tụ, và vệt đang bám sẽ vẽ một vệt thẳng từ vành vòng
+   * cũ về sát người — 33 nan hoa bắn vào tâm, không giống gì đàn kiếm đang bay.
+   */
+  onSwordsEnd?: () => void
+
   /** Phát chiêu. Phát lại khi đang chạy thì làm mới, không xếp hàng hai lượt. */
   cast(owner: Combatant, spec: SwordStormSpec): void {
+    if (this.active) this.onSwordsEnd?.()
     this.active = true
     this.age = 0
     this.hitTimer = 0
@@ -273,15 +296,27 @@ export class SwordStorm {
       this.scale.setScalar(0.95 * fade)
       this.matrix.compose(this.position, this.quaternion, this.scale)
       this.mesh.setMatrixAt(i, this.matrix)
+
+      // Vệt lấy vị trí MŨI kiếm, không phải tâm thân kiếm: lưỡi với ra ngoài
+      // vòng bay, và vệt xuất phát từ tâm thì nó nằm lệch vào trong so với chỗ
+      // mắt đang thấy lưỡi kiếm quét qua.
+      this.onSwordTrail?.(
+        i,
+        owner.pos.x + Math.cos(angle) * (r + BLADE_REACH * 0.5),
+        y,
+        owner.pos.z + Math.sin(angle) * (r + BLADE_REACH * 0.5),
+      )
     }
     this.mesh.instanceMatrix.needsUpdate = true
   }
 
   stop(): void {
+    const wasActive = this.active
     this.active = false
     this.owner = null
     this.targets.length = 0
     this.mesh.visible = false
+    if (wasActive) this.onSwordsEnd?.()
   }
 
   dispose(): void {
