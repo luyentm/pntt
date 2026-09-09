@@ -46,6 +46,32 @@ describe('màu vệt theo chiêu', () => {
     expect(new Set([giaY, daiDien, trung].map((c) => `${c.head}-${c.tail}`)).size).toBe(3)
   })
 
+  it('★ chiêu chiếm chỗ nhau trên cùng một phím KHÔNG được cùng màu vệt', () => {
+    // Bảy chiêu Nguyên Anh thay bảy chiêu Luyện Khí trên đúng cùng một phím
+    // (xem `game/Loadout.ts`). Nếu chúng cùng cặp màu thì người chơi vừa đột phá
+    // bấm phím quen thuộc và thấy y hệt cái cũ — mất luôn cảm giác đã lên cấp.
+    //
+    // Nguy cơ này KHÔNG hiển nhiên: các cặp đó cố tình cùng vai trò, nên phần
+    // lớn cũng cùng ngũ hành, nên mặc định chúng rơi vào đúng một cặp màu.
+    const bySlot = new Map<number, typeof SKILLS>()
+    for (const def of SKILLS) {
+      const list = bySlot.get(def.slot) ?? []
+      list.push(def)
+      bySlot.set(def.slot, list as never)
+    }
+    for (const [slot, list] of bySlot) {
+      if (list.length < 2) continue
+      const seen = new Map<string, string>()
+      for (const def of list) {
+        const c = skillTrail(def.id, def.element)
+        const key = `${c.head}-${c.tail}`
+        const other = seen.get(key)
+        expect(other, `ô ${slot}: ${def.name} trùng màu vệt với ${other}`).toBeUndefined()
+        seen.set(key, def.name)
+      }
+    }
+  })
+
   it('Phong Độn Thuật không dùng cặp chủ đạo', () => {
     // Cú lướt và cú chạy bộ cùng là một đường thẳng ngang mặt đất: cùng màu nữa
     // thì nó đọc ra là "chạy nhanh một nhịp", không phải một chiêu

@@ -80,6 +80,43 @@ const TRAIL_DAI_DIEN = { head: 0xf0e4ff, tail: 0x8a4be0 }
 /** Thực Kim Trùng: vàng trùng sang lục ô liu — sắc của thứ đang gặm, không phải của lửa. */
 const TRAIL_TRUNG = { head: 0xe9ff9e, tail: 0x6e8f12 }
 
+// ── Sáu thần thông Nguyên Anh và trận kỳ Trúc Cơ ──
+//
+// Sáu chiêu Nguyên Anh có một vấn đề mà bảy chiêu Luyện Khí không có: chúng
+// DỒN vào ba hệ. Canh Kim Kiếm Khí và Nguyên Từ Thần Quang đều `kim`, Tam Diễm
+// Phiến `hoa` như Hoả Cầu, Thiên Nhất Chân Thuỷ `thuy` như Băng Phong Phù. Lấy
+// theo ngũ hành thì mỗi cặp ra đúng một màu, và người xem đọc Nguyên Từ Thần
+// Quang thành "Canh Kim Kiếm Khí phiên bản chậm". Nên cả sáu đều có cặp riêng,
+// và mỗi cặp chọn theo THỨ CHIÊU ĐÓ LÀM chứ không theo hệ nó thuộc về.
+
+/** Canh Kim Kiếm Khí: trắng thép sang lam thép — kim loại NGUỘI, sắc, không phải kim quang. */
+const TRAIL_CANH_KIM = { head: 0xf4fbff, tail: 0x5c7f9c }
+/**
+ * Tam Diễm Phiến: vàng trắng sang tím than.
+ *
+ * Cố tình KHÔNG đi về đỏ như Hoả Cầu. Ba tầng lửa của cây quạt trong nguyên tác
+ * là ba loại lửa chồng lên nhau, và tầng cuối là thứ không tắt được — đuôi ngả
+ * tím than đọc ra là lửa đã cháy qua giai đoạn đỏ, chứ không phải nóng hơn một
+ * chút. Đầu trắng hơn hẳn Hoả Cầu vì đây là chiêu Nguyên Anh, không phải cấp một.
+ */
+const TRAIL_TAM_DIEM = { head: 0xfff4d0, tail: 0x6b1f4a }
+/** Thiên Nhất Chân Thuỷ: trắng xanh sang lam đen — chí âm, sâu hơn mọi cặp lam khác. */
+const TRAIL_THIEN_NHAT = { head: 0xe6fdff, tail: 0x0f3a6b }
+/** Nguyên Từ Thần Quang: tía nhạt sang lam thẫm — quang mạc từ tính, không phải kiếm khí. */
+const TRAIL_NGUYEN_TU = { head: 0xcfd4ff, tail: 0x3b2f8f }
+/** Thái Ất Thanh Sơn: trắng ngà sang lục đá — màu của NÚI, nên nặng và đục. */
+const TRAIL_THANH_SON = { head: 0xf2f0dc, tail: 0x3f6b4a }
+/**
+ * Phong Lôi Sí: lam ngọc sáng sang tím điện.
+ *
+ * Bắt đầu đúng chỗ Phong Độn Thuật bắt đầu (cùng là gió), rồi rẽ sang tím điện
+ * thay vì chìm xuống lam sâu — hai chiêu chung một phím, nên chỗ chúng giống
+ * nhau phải nói "cùng một lộ" và chỗ khác nhau phải nói "cái này có thêm lôi".
+ */
+const TRAIL_PHONG_LOI = { head: 0x9ff3ff, tail: 0x7b3bd6 }
+/** Ngũ Hành Trận Kỳ: vàng phù sang nâu đất — trận kỳ cắm xuống đất, không bay. */
+const TRAIL_TRAN_KY = { head: 0xf6e3a8, tail: 0x6b4a24 }
+
 /**
  * Cặp màu vệt gắn theo TỪNG CHIÊU, tra trước khi tra theo ngũ hành.
  *
@@ -101,6 +138,13 @@ export const SKILL_TRAIL: Record<string, { head: number; tail: number }> = {
   giaYThanCong: TRAIL_GIA_Y,
   daiDienQuyet: TRAIL_DAI_DIEN,
   thucKimTrung: TRAIL_TRUNG,
+  nguHanhTranKy: TRAIL_TRAN_KY,
+  canhKimKiemKhi: TRAIL_CANH_KIM,
+  tamDiemPhien: TRAIL_TAM_DIEM,
+  thienNhatChanThuy: TRAIL_THIEN_NHAT,
+  nguyenTuThanQuang: TRAIL_NGUYEN_TU,
+  thaiAtThanhSon: TRAIL_THANH_SON,
+  phongLoiSi: TRAIL_PHONG_LOI,
 }
 
 function elementTrail(element: string): { head: number; tail: number } {
