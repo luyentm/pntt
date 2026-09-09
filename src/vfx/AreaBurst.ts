@@ -2,6 +2,7 @@ import {
   AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
+  DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
@@ -30,7 +31,6 @@ function ringGeometry(segments = 20, thickness = 0.22): BufferGeometry {
     const s0 = Math.sin(a0)
     const c1 = Math.cos(a1)
     const s1 = Math.sin(a1)
-    // Thứ tự đỉnh cho pháp tuyến hướng lên (+Y)
     positions.push(c0 * inner, 0, s0 * inner, c0, 0, s0, c1, 0, s1)
     positions.push(c0 * inner, 0, s0 * inner, c1, 0, s1, c1 * inner, 0, s1 * inner)
   }
@@ -97,6 +97,14 @@ export class AreaBurstLayer {
         depthWrite: false,
         toneMapped: false,
         blending: AdditiveBlending,
+        // BẮT BUỘC. Thứ tự đỉnh của `ringGeometry` cho pháp tuyến hướng XUỐNG
+        // (−Y) — tích có hướng hai cạnh đầu tam giác ra (0, −0.22, 0) — nên
+        // camera nhìn từ trên chỉ thấy mặt sau và `FrontSide` cull sạch. Ghi chú
+        // cũ ở `ringGeometry` nói "pháp tuyến hướng lên" là SAI, và cái vòng
+        // loang ra này chưa từng hiện lên: mọi chỉ số vẫn đúng, vẫn tốn một draw
+        // call, chỉ là không có pixel nào. Bấy lâu nay pháp vực chỉ có cột sáng
+        // và vết cháy, còn cái vòng vẽ ra TẦM của chiêu thì không ai thấy.
+        side: DoubleSide,
       })
       const pillarMat = new MeshBasicMaterial({
         color: Palette.loi,
@@ -138,10 +146,16 @@ export class AreaBurstLayer {
     b.ringMat.color.set(color)
     b.pillarMat.color.set(color)
 
-    b.ring.position.set(x, y + 0.06, z)
+    // 0.14, không phải 0.06: mặt trên của sàn đá luyện võ trường ở y = 0.056,
+    // nên 0.06 chỉ vượt nó bốn phần nghìn unit — vừa đủ hiện, và hụt ngay nếu
+    // sau này có prop sàn nào cao hơn một chút
+    b.ring.position.set(x, y + 0.14, z)
     b.ring.scale.set(radius * 0.3, 1, radius * 0.3)
     b.ring.visible = true
-    b.ringMat.opacity = 0.6
+    // 0.48 chứ không 0.6: con số 0.6 được chọn khi vòng đang bị cull nên chưa ai
+    // thấy nó. Lúc nó hiện lên thật thì ở 0.6 nó là thứ chói nhất khung hình và
+    // giành hết chú ý của chùm nan hoa ở tâm
+    b.ringMat.opacity = 0.48
 
     if (b.withPillar) {
       const height = options.pillarHeight ?? radius * 3.4
@@ -163,7 +177,7 @@ export class AreaBurstLayer {
         const eased = 1 - (1 - progress) ** 2.2
         const s = b.radius * (0.3 + eased * 0.85)
         b.ring.scale.set(s, 1, s)
-        b.ringMat.opacity = 0.6 * (1 - progress) ** 1.5
+        b.ringMat.opacity = 0.48 * (1 - progress) ** 1.5
 
         if (b.withPillar) {
           // Cột co lại theo chiều ngang và mờ dần: đọc ra là năng lượng tan đi

@@ -68,14 +68,6 @@ interface Projectile {
   hits: Set<number>
   hitsLeft: number
   /**
-   * Đếm tới lần nhả vệt kế tiếp.
-   *
-   * Chặn nhịp Ở ĐÂY chứ không ở lớp VFX: lớp VFX nhận vệt qua một hook không có
-   * danh tính của từng viên, nên nó không thể biết hai lời gọi liền nhau là của
-   * một viên hay của hai viên khác nhau.
-   */
-  trailTimer: number
-  /**
    * Số thứ tự của LẦN BẮN này, không phải của ô trong hồ.
    *
    * Cần vì vệt dải phải bám theo từng viên: nếu lấy chỉ số ô làm danh tính thì
@@ -86,8 +78,6 @@ interface Projectile {
 }
 
 const GROUND_CLEARANCE = 0.55
-/** Giãn cách giữa hai lần nhả vệt của một viên, giây. */
-const TRAIL_INTERVAL = 0.035
 
 /**
  * Phi hành khí: phi kiếm, hoả cầu, phù lục.
@@ -152,7 +142,6 @@ export class ProjectileSystem {
         travelled: 0,
         hits: new Set(),
         hitsLeft: 0,
-        trailTimer: 0,
         serial: 0,
       })
     }
@@ -193,7 +182,6 @@ export class ProjectileSystem {
     slot.spin = this.rng.float(0, Math.PI * 2)
     slot.returning = false
     slot.travelled = 0
-    slot.trailTimer = 0
     slot.serial = ++this.serialCounter
     slot.hits.clear()
     slot.hitsLeft = Math.max(1, spec.pierce)
@@ -222,14 +210,6 @@ export class ProjectileSystem {
       p.age += dt
       p.spin += dt * 14
 
-      p.trailTimer -= dt
-      if (p.trailTimer <= 0) {
-        p.trailTimer = TRAIL_INTERVAL
-        this.onTrail?.(p.x, p.y, p.z, p.vx, p.vz, spec)
-      }
-      // Vệt dải thì nhả MỖI FRAME, không chặn nhịp như hạt: nhịp 0.035s làm đầu
-      // dải tụt lại sau viên đạn tới hơn nửa unit ở tốc độ bay thường, và mắt
-      // đọc ra là dải bị đứt khỏi thanh kiếm chứ không phải bám theo nó.
       this.onTrailPath?.(p.serial, p.x, p.y, p.z, spec)
 
       if (spec.behavior === 'truyKich') this.homeToward(p, dt)
@@ -384,7 +364,13 @@ export class ProjectileSystem {
     this.retire(p)
   }
 
-  /** Vệt dải bám theo viên đạn, nhả mỗi frame. `serial` là danh tính của viên. */
+  /**
+   * Vệt dải bám theo viên đạn, nhả MỖI FRAME. `serial` là danh tính của viên.
+   *
+   * Trước đây có thêm một hook `onTrail` chặn nhịp 0.035 giây để nhả hạt. Nhịp
+   * đó làm đầu dải tụt lại sau viên đạn hơn nửa unit ở tốc độ bay thường, nên
+   * khi hạt bị bỏ đi thì cả cái hook cũng đi theo — dải không cần chặn nhịp.
+   */
   onTrailPath?: (serial: number, x: number, y: number, z: number, spec: ProjectileSpec) => void
 
   /** Viên `serial` đã tan — thả vệt dải của nó cho nó tự mờ đi. */
@@ -392,16 +378,6 @@ export class ProjectileSystem {
 
   /** Hook để VFX vẽ vụ nổ. Scene gán vào. */
   onExplode?: (x: number, y: number, z: number, radius: number, spec: ProjectileSpec) => void
-
-  /** Nhả vệt sau viên đạn. Đã được chặn nhịp, gọi được thẳng vào lớp hạt. */
-  onTrail?: (
-    x: number,
-    y: number,
-    z: number,
-    vx: number,
-    vz: number,
-    spec: ProjectileSpec,
-  ) => void
 
   private retire(p: Projectile): void {
     if (p.active) this.onTrailEnd?.(p.serial)

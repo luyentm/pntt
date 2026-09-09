@@ -328,6 +328,68 @@ describe('RibbonTrailLayer — vệt một lần', () => {
   })
 })
 
+describe('RibbonTrailLayer — xoắn ốc', () => {
+  it('đầu vệt ở ĐỈNH và bán kính thóp lại ở trên', () => {
+    // Đảo hai thứ này là ra hiệu ứng ngược nghĩa: "đang rơi xuống và loe ra"
+    // thay vì "đang cuộn lên và tụ vào"
+    const layer = new RibbonTrailLayer()
+    const cam = makeCamera()
+    const cx = 3
+    const cz = -2
+    layer.strokeSpiral(cx, 0, cz, 1.5, 4, 2, 0, { width: 0.01, fade: 5 })
+    layer.update(0.016, cam)
+
+    const { pos } = attrs(layer)
+    const mid = (i: number) => ({
+      x: (pos.getX(i * 2) + pos.getX(i * 2 + 1)) / 2,
+      y: (pos.getY(i * 2) + pos.getY(i * 2 + 1)) / 2,
+      z: (pos.getZ(i * 2) + pos.getZ(i * 2 + 1)) / 2,
+    })
+    const dau = mid(0)
+    const duoi = mid(TRAIL_SEGMENTS - 1)
+    // Đầu vệt ở trên cùng, đuôi ở chân
+    expect(dau.y).toBeCloseTo(4, 3)
+    expect(duoi.y).toBeCloseTo(0, 3)
+    // Và bán kính ở đầu nhỏ hơn ở đuôi
+    expect(Math.hypot(dau.x - cx, dau.z - cz)).toBeLessThan(
+      Math.hypot(duoi.x - cx, duoi.z - cz),
+    )
+  })
+
+  it('y giảm đều dọc theo vệt và cao độ không bao giờ vượt height', () => {
+    const layer = new RibbonTrailLayer()
+    const cam = makeCamera()
+    layer.strokeSpiral(0, 1, 0, 1, 3, 1.5, 0.7, { width: 0.01, fade: 5 })
+    layer.update(0.016, cam)
+    const { pos } = attrs(layer)
+    let truoc = Infinity
+    for (let i = 0; i < TRAIL_SEGMENTS; i++) {
+      const y = (pos.getY(i * 2) + pos.getY(i * 2 + 1)) / 2
+      expect(y).toBeLessThanOrEqual(1 + 3 + 1e-4)
+      expect(y).toBeGreaterThanOrEqual(1 - 1e-4)
+      expect(y).toBeLessThan(truoc + 1e-6)
+      truoc = y
+    }
+  })
+
+  it('phase quay cả đường xoắn, không đổi hình', () => {
+    const cam = makeCamera()
+    const doDau = (phase: number): { x: number; z: number } => {
+      const layer = new RibbonTrailLayer()
+      layer.strokeSpiral(0, 0, 0, 2, 3, 1, phase, { width: 0.01, fade: 5 })
+      layer.update(0.016, cam)
+      const { pos } = attrs(layer)
+      return { x: (pos.getX(0) + pos.getX(1)) / 2, z: (pos.getZ(0) + pos.getZ(1)) / 2 }
+    }
+    const a = doDau(0)
+    const b = doDau(Math.PI)
+    // Đối xứng tâm: quay nửa vòng thì đầu vệt sang phía đối diện, bán kính giữ
+    expect(Math.hypot(a.x, a.z)).toBeCloseTo(Math.hypot(b.x, b.z), 4)
+    expect(b.x).toBeCloseTo(-a.x, 4)
+    expect(b.z).toBeCloseTo(-a.z, 4)
+  })
+})
+
 describe('RibbonTrailLayer — hồ', () => {
   it('hết chỗ thì cắt vệt ĐANG TAN trước, không cắt vệt đang bám', () => {
     const layer = new RibbonTrailLayer()

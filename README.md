@@ -264,93 +264,23 @@ model nào. Ngói lưu ly xanh lục, cột sơn đỏ, vách hồng đất, đ�
 
 7 căn, 3 biến thể → **6 draw call** cho toàn bộ dãy phố (3 thân + 3 cửa sổ).
 
-### Hệ hạt
+### Hệ hạt đã bị bỏ
 
-Hiệu ứng ban đầu chỉ có mảnh vỡ + vệt chém + vòng loang, nên bảy chiêu khác nhau nhìn
-ra gần như một chiêu bảy màu. Thêm một lớp hạt dùng chung và ba lớp phụ.
+`vfx/Particles.ts` (5 dáng hạt, `InstancedMesh` theo dáng, billboard khói/loé mềm) và
+`vfx/softTexture.ts` đã được **xoá hẳn**. Mọi hiệu ứng thần thông giờ dựng bằng dải ribbon
+và vòng phẳng. Lý do là thẩm mỹ trước, chi phí sau: dải ribbon có ĐƯỜNG, và đường nói được
+hướng của lực; một đám hạt chỉ nói được "có gì vừa xảy ra ở đây".
 
-- **Vẫn tự viết, không dùng thư viện particle.** Thư viện sinh ra sprite mờ, còn cả
-  game này là lowpoly có mặt cắt — hạt cũng phải là khối có facet mới cùng chất. Đây là
-  quyết định từ đầu project và vẫn đúng.
-- **Ba dáng hạt, mỗi dáng một `InstancedMesh`** → cả lớp hạt tốn đúng 3 draw call.
-  `shard` (tứ diện, mảnh vỡ) · `spark` (hộp thuôn, **xoay theo vận tốc** và dài ra theo
-  tốc độ — chính việc đó làm nó đọc ra là tốc độ, một khối vuông bay nhanh vẫn chỉ là
-  khối vuông) · `mote` (bát diện nhỏ, đốm linh khí).
-- **Dùng mảng typed, không mảng object**: ba dáng × 256 hạt × 15 trường. Mảng typed vừa
-  gọn hơn vừa không tạo 768 object cho GC phải theo dõi.
-- **Mỗi ngũ hành một CHẤT, không chỉ một màu.** Hoả: tro nóng bay lên, trọng lực âm, cản
-  cao. Thuỷ: mảnh băng rơi, trọng lực mạnh, không cản. Kim: tia lửa bắn thẳng và tắt sớm.
-  Mộc: đốm lơ lửng, cản rất cao. Chỉ đổi màu thì bảy chiêu vẫn là một chiêu bảy màu.
-- **Dáng `implode` là phần quan trọng nhất**: hạt sinh trên vỏ cầu rồi bay VÀO tâm trong
-  lúc đang niệm chú. Nó làm chiêu có cảm giác được DỰNG LÊN thay vì bật ra từ không khí —
-  và nó cũng là lời báo trước cho đối thủ, nên vừa đẹp vừa công bằng. `skill:cast` được
-  mở rộng thêm vị trí, ngũ hành và thời gian dẫn khí để dựng được đoạn này.
-- **Tia sét thật cho Thiên Lôi Phù** (`LightningBolt`): đường gấp khúc dựng LẠI mỗi lần
-  giáng, cộng ba nhánh con. Dùng lại đúng một hình thì lần thứ hai người chơi nhận ra
-  ngay và nó thành một cái sticker. Chi phí là ghi lại một `Float32Array` cấp phát sẵn.
-- **Vết còn lại trên đất** (`GroundMarks`): vệt cháy, mảng băng, nằm 2–3 giây. Một chiêu
-  diện rộng mà không để lại gì thì nó chỉ là một tia sáng loé qua — người chơi không có
-  bằng chứng nào rằng chỗ đó vừa bị đánh.
-- **Vệt sau phi hành khí**, chặn nhịp 0,035 giây. Chặn nhịp Ở TRONG `ProjectileSystem`
-  chứ không ở lớp VFX: lớp VFX nhận vệt qua một hook không có danh tính của từng viên,
-  nên nó không thể biết hai lời gọi liền nhau là của một viên hay hai viên.
+Những gì đã học từ hệ hạt vẫn còn giá trị và giữ lại đây: đo được rằng quy tắc lowpoly
+không đắt vì hình học — nó đắt vì **diện tích phủ của vật trong suốt**. Cùng 768 hạt cùng
+hình học, đổi hết sang cộng sáng ở cỡ phủ kín màn hình thì đắt **gấp 2,05 lần** (3,31 →
+6,77 ms); còn ở hạn mức thật (32 haze + 24 smoke) thì chênh 0,08 ms, nhỏ hơn cả độ lệch
+0,20 ms giữa hai lô đối chứng — tức là không đo được. Dải ribbon thắng ở đúng chỗ đó: nó
+mảnh nên phủ ít pixel, mà vẫn là mặt phẳng cộng sáng nên vẫn chói.
 
-Bốn chỗ phải sửa khi nối vào:
-
-- **`AreaBurst` đang phủ mờ ở opacity 0,9**, nên cái cột của Thiên Lôi Phù là một tấm
-  vàng đặc che kín một phần ba khung hình — và che mất chính tia sét vừa dựng. Đổi sang
-  cộng sáng (cùng lỗi đã sửa ở `BreakthroughFx`), và bỏ hẳn cột cho Thiên Lôi Phù vì giờ
-  đã có tia sét thật.
-- **Đàn kiếm trúc phát `skill:area` mười lần mỗi giây** suốt 5 giây. Với lớp hạt mới đó
-  là ~1500 hạt và 50 vết cháy chồng lên nhau. Tách hẳn hai đồng hồ: sát thương giữ nhịp
-  dày 0,1 giây, hình ảnh 0,6 giây — và đếm cả hai ở chỗ có `dt` thật, vì trừ theo hằng
-  số trong `strikeRing` sẽ sai đơn vị (hàm đó được gọi mỗi 0,1 giây, không mỗi
-  `HIT_INTERVAL`).
-- `emit()` phải ghi **ma trận đầu tiên** ngay, không chờ `update()`: nếu chờ thì hạt vừa
-  sinh còn giữ ma trận cũ (đã bị đẩy xuống y = −999 lúc tắt) trong đúng một khung.
-- Hạt cũng phải **xác định theo seed** — một lời gọi `Math.random()` lẻ trong lớp hạt là
-  đủ phá vỡ tính chất mà cả game được thiết kế quanh. Có test đối chiếu hai lần chạy
-  cùng seed.
-
-Đo ở đỉnh tải: **768 hạt (đầy hồ) + 55 nhân vật + đàn kiếm = 1,23 ms/khung** trên ngân
-sách 16,7 ms, 149 draw call.
-
-#### Hai dáng billboard mềm — chỗ duy nhất phá quy tắc lowpoly
-
-`haze` (cộng sáng — quầng lửa, kim quang) và `smoke` (alpha tối — khói thật). Chỉ Hoả
-Cầu và đột phá được dùng.
-
-- **Cộng sáng KHÔNG THỂ làm ra khói.** Nó chỉ cộng thêm sáng, còn khói phải che bớt —
-  thử cộng sáng với màu khói trước và ra một quầng phát sáng, đọc ra là lửa. Ngược lại
-  alpha tối không làm được quầng lửa. Một vụ nổ thật có cả hai: loé sáng rồi mới ra khói,
-  nên phải là hai hồ riêng với hai `blending` khác nhau.
-- **Texture mềm sinh bằng code** (`DataTexture` 64×64, dốc alpha `smoothstep`). Đây là
-  cách duy nhất có hạt mềm mà không phá tính chất "không một file asset nào": nó tốn
-  16 KB bộ nhớ và **không thêm một byte nào vào bundle**.
-- **`DoubleSide` là bắt buộc, không phải cho chắc.** `PlaneGeometry` hướng mặt về +Z còn
-  camera nhìn theo −Z của chính nó, nên copy quaternion camera vào billboard làm mặt
-  phẳng quay RA SAU và `FrontSide` cull sạch — hạt có trong dữ liệu, mesh `visible`, đủ
-  instance, mà trên màn hình không có gì.
-- Khói `renderOrder` 6, quầng lửa 7: khói che, quầng cộng sáng. Sai thứ tự thì quầng bị
-  khói làm mờ thay vì rực lên trên nền khói.
-- Billboard **phình ra** rồi mờ, không thu nhỏ: khói thật loang ra khi nguội, còn thu nhỏ
-  đọc ra là hút vào. Và "mờ dần" ở đây là kết quả của việc cùng một lượng sáng bị trải ra
-  diện tích lớn hơn — instance không có alpha riêng.
-
-**Chi phí, đo được:**
-
-| | ms/khung (trung vị 7 lô) |
-|---|---|
-| 768 hạt khối đặc | 3,66 |
-| + billboard (32 haze + 24 smoke) | **3,74** |
-| 768 hạt khối đặc (lô đối chứng thứ hai) | 3,86 |
-
-Hai lô đối chứng lệch 0,20 ms, lớn hơn khoảng cách 0,08 ms giữa có và không billboard —
-tức là **ở hạn mức này chi phí không đo được**. Đối chiếu với phép đo ở đầu kia: cùng 768
-hạt cùng hình học, đổi hết sang cộng sáng ở cỡ phủ kín màn hình thì đắt **gấp 2,05 lần**
-(3,31 → 6,77 ms). Kết luận: quy tắc lowpoly không đắt vì hình học — nó đắt vì **diện tích
-phủ của hạt trong suốt**, nên nới quy tắc bằng một *hạn mức phủ màn hình* là gần như miễn
-phí, còn nới bằng cách bỏ hẳn thì không.
+Kèm theo, hook `ProjectileSystem.onTrail` (chặn nhịp 0,035 giây để nhả hạt sau viên đạn)
+cũng bị bỏ — `onTrailPath` nhả mỗi khung đã thay hẳn, và nhịp 0,035 giây làm đầu dải tụt
+sau viên đạn hơn nửa unit.
 
 ### Vệt đuôi (`vfx/RibbonTrails.ts`)
 
@@ -409,17 +339,18 @@ dùng hết 18 điểm, nhưng làm nhịp chốt **phụ thuộc fps** — mố
 bước thoả sớm hơn, và giãn cách thật hoá thành `step − quãng-đi-một-khung`. Với một
 codebase fixed-timestep thì đổi một điểm ở mũi vệt để lấy chiều dài không đổi là đáng.
 
-**Danh tính cho từng viên đạn.** `ProjectileSystem.onTrail` cũ không có danh tính — ghi chú
-trong `Projectile.ts` đã nói rõ lớp VFX không thể biết hai lời gọi liền nhau là của một viên
-hay hai viên. Chặn nhịp bằng hạt thì không sao, nhưng dải thì phải biết. Nên mỗi lần bắn
-được cấp một `serial` chỉ tăng, và có hai hook mới: `onTrailPath` (mỗi khung) và
-`onTrailEnd`. Không lấy chỉ số ô trong hồ làm danh tính: viên mới sinh ở ô vừa trả về sẽ
-tiếp tục vệt của viên cũ, ra một dải nối từ chỗ viên trước vừa nổ sang chỗ viên sau vừa bắn.
-`onTrailEnd` phải gọi ở CẢ hai đường viên bị thu hồi — `retire()` và nhánh "hồ cạn, giành
-lại viên già nhất" trong `take()`, nhánh này không đi qua `retire`.
+**Danh tính cho từng viên đạn.** Hook `onTrail` cũ không có danh tính — ghi chú trong
+`Projectile.ts` đã nói rõ lớp VFX không thể biết hai lời gọi liền nhau là của một viên hay
+hai viên. Với hạt thì không sao, nhưng dải thì phải biết. Nên mỗi lần bắn được cấp một
+`serial` chỉ tăng, cùng hai hook `onTrailPath` (mỗi khung) và `onTrailEnd`. Không lấy chỉ số
+ô trong hồ làm danh tính: viên mới sinh ở ô vừa trả về sẽ tiếp tục vệt của viên cũ, ra một
+dải nối từ chỗ viên trước vừa nổ sang chỗ viên sau vừa bắn. `onTrailEnd` phải gọi ở CẢ hai
+đường viên bị thu hồi — `retire()` và nhánh "hồ cạn, giành lại viên già nhất" trong `take()`,
+nhánh này không đi qua `retire`.
 
-Dải nhả **mỗi khung**, không chặn nhịp 0,035 s như hạt: ở nhịp đó đầu dải tụt sau viên đạn
-hơn nửa unit và mắt đọc ra là dải bị đứt khỏi thanh kiếm.
+Dải nhả **mỗi khung**, không chặn nhịp: `onTrail` chặn 0,035 giây cho vừa với hạt, và ở nhịp
+đó đầu dải tụt sau viên đạn hơn nửa unit — mắt đọc ra là dải bị đứt khỏi thanh kiếm. Khi hạt
+bị bỏ thì `onTrail` cũng bị bỏ theo.
 
 **Màu phải bão hoà hơn tưởng.** Dùng lại `Palette.vang` (`#F0D98A`) và `Palette.linh`
 (`#7FE3D0`) thì vệt ra trắng vô sắc: dải vẽ bằng phép cộng nên nền càng sáng càng nuốt màu
@@ -457,6 +388,84 @@ yên, không phải 33 vật thể đang bay. Kiếm quay 0,23–0,34 unit mỗi
 vệt vẫn dài 16 × 0,28 ≈ 4,5 unit trong khi khoảng cách giữa hai thanh chỉ 3,4 unit. Sửa bằng
 `points: 7` → vệt ~1,7 unit ≈ 16° ở bán kính 6, phủ chừng nửa khoảng giữa hai thanh: ra vòng
 xoáy **đứt nét**, thấy rõ từng thanh kiếm mà vẫn có cảm giác cả đàn đang cuốn.
+
+### Nan hoa, xoắn ốc và bảng màu ngũ hành
+
+Ba kiểu nét dựng nên toàn bộ hiệu ứng thần thông sau khi bỏ hạt:
+
+- **Nan hoa** (`Vfx.spokes`) — chùm dải toả ra từ một điểm. Thay cho tia lửa hạt ở cú đánh
+  trúng, vụ nổ, mép pháp vực, tụ khí, và lúc quái chết.
+- **Xoắn ốc** (`RibbonTrails.strokeSpiral`) — dải cuộn LÊN. Dùng cho lên khiên, lên tầng,
+  đột phá, và cột khí giữa pháp vực.
+- **Cung** (`strokeArc`) và **đường thẳng** (`strokeLine`) — vệt chém và cú lướt, đã có từ trước.
+
+**Đầu vệt của nan hoa phải ở TÂM.** Dải thóp dần từ đầu về đuôi nên đầu vệt là đầu dày và
+chói. Bản đầu tôi đặt đầu ở mút ngoài: mỗi nan hoa dày và sáng nhất ở vành rồi thóp về tâm,
+và cả chùm đọc ra là những tia đang *chiếu vào* tâm — ngược hẳn nghĩa của một vụ nổ. Đặt
+đầu ở tâm thì được đúng hình sao nổ, và nó đúng cho cả tụ khí vì chỗ linh khí đang tụ cũng
+là chỗ phải sáng nhất. Nên không cần hai chiều, chỉ cần một.
+
+Góc nan hoa **rải đều rồi nhiễu nhẹ**, không rải tự do: theo phân bố đúng thì với 5 nan sẽ
+thường xuyên có mấy nan chồng khít nhau và cả chùm lệch hẳn về một phía, và mắt đọc ra là
+hiệu ứng bị lỗi chứ không phải là ngẫu nhiên.
+
+**Bảng màu ngũ hành đi theo CẶP** (`ELEMENT_TRAIL`): kim `#FFF3C0→#D99B2C`, mộc
+`#DCF46E→#2F9E55`, thuỷ `#D8F6FF→#2F7FD6`, hoả `#FFD45E→#D8341A`, thổ `#F4CC86→#8A5524`,
+cộng hai cặp riêng cho sấm (`#EAF7FF→#6F9FFF`) và ma đạo (`#D94A52→#3A2740`). Đổi một màu
+thì bảy chiêu vẫn là một chiêu bảy màu; đổi cả cặp thì mỗi chiêu có một đường chuyển màu
+riêng, và đó là thứ đọc được cả khi vệt chỉ hiện hai phần mười giây. Đầu vệt của hệ nào
+cũng sáng và ngả vàng/trắng: đầu vệt là chỗ vừa xảy ra lực, và mắt đọc "sáng gắt" thành
+"mạnh" — để đầu vệt đúng màu hệ thì hoả cầu ra một vệt đỏ đều tay, nhìn như dải sơn.
+
+Sấm và cú giộng của boss dùng cặp RIÊNG chứ không lấy theo ngũ hành: cả hai đều là `kim`,
+nên lấy theo hệ thì tia sét ra màu vàng đồng và đòn của Mặc Đại Phu trông như một chiêu
+kim quang chính đạo.
+
+**Chi phí, đo được ở khoảnh khắc nặng nhất** (33 kiếm trúc + vệt chạy + hai vụ nổ + một
+pháp vực, 96 vệt cùng sống): **+10 draw call và +6672 tam giác** trên tổng 96 nghìn, cho cả
+dải ribbon và hào quang chân. Trong 10 draw call đó chỉ 1 là của lớp dải (nó gộp mọi vệt
+vào một mesh), 4 là bốn vòng hào quang đang sống, và tất cả nhân hai vì pass nét viền cần
+một lượt render depth riêng.
+
+### Hào quang dưới chân (`vfx/FootAura.ts`)
+
+Vòng linh khí loang ra dưới chân mỗi khi chạy, nhả xen kẽ lệch sang hai bên nên đọc ra là
+từng BƯỚC CHÂN chứ không phải một hiệu ứng đứng yên nhấp nháy. Màu đổi luân phiên vàng kim
+/ lam lục. Lúc ngự kiếm phi hành thì vòng to hơn và nhịp chậm hơn: không có bước chân nào
+cả, nó là luồng khí dưới phi kiếm.
+
+Là lớp riêng chứ không dùng lại `AreaBurstLayer` dù hình học y hệt, vì NHỊP khác hẳn:
+`AreaBurstLayer` nhả một vòng mỗi vụ nổ, lớp này nhả ~9 vòng mỗi giây suốt cả lượt chơi.
+Chung hồ thì vòng dưới chân giành hết 12 ô và mọi pháp vực đều mất vòng — tức người chơi
+mất đúng cái thứ nói cho họ biết tầm của chiêu.
+
+Không làm một đĩa sáng bám dưới chân: nó trùng ngay với ô chọn mục tiêu và vòng chỉ dẫn vốn
+đã có ở cảnh, nên đọc ra là "nhân vật đang được chọn". Vòng LOANG RA thì không lẫn với gì,
+vì không có thứ nào khác dưới chân biết nở ra.
+
+**Hai lỗi cùng một loại: hiệu ứng chạy đúng hoàn toàn mà màn hình trống trơn.**
+
+Cả hai đều không báo lỗi, và cả hai đều không phát hiện được bằng cách đọc chỉ số — `visible`
+đúng, `opacity` 0,7, `scale` 1,3, vị trí đúng, vẫn tốn một draw call.
+
+1. **Thứ tự đỉnh cho pháp tuyến hướng XUỐNG.** Tích có hướng hai cạnh đầu tam giác của
+   `ringGeometry` ra `(0, −0.22, 0)`, nên camera nhìn từ trên chỉ thấy mặt sau và `FrontSide`
+   cull sạch. Ghi chú `// Thứ tự đỉnh cho pháp tuyến hướng lên (+Y)` trong mã là **sai** —
+   và nó sai từ `AreaBurstLayer`, nghĩa là **cái vòng loang ra của pháp vực chưa từng hiện
+   lên**: bấy lâu nay pháp vực chỉ có cột sáng và vết cháy, còn cái vòng vẽ ra TẦM của chiêu
+   thì không ai thấy. Đã sửa cả hai lớp bằng `side: DoubleSide` — với một vòng phẳng vẽ bằng
+   phép cộng thì mặt trước hay sau không có nghĩa gì, nên vẽ cả hai mặt là câu trả lời đúng,
+   không phải đảo winding.
+2. **Nhấc lên thiếu sáu phần nghìn unit.** `y` truyền vào là cao độ ĐỊA HÌNH, còn sàn đá của
+   luyện võ trường là một prop nằm trên địa hình — đo được mặt trên của nó ở `y = 0.056`.
+   Tôi nhấc 0.05, nên vòng nằm dưới sàn và bị che trên toàn bộ khu vực người chơi ở nhiều
+   nhất. Cách tìm ra: nhả ba vòng ở ba độ cao (0.05 / 0.5 / 1.5) rồi chụp một ảnh — hai vòng
+   trên hiện, vòng dưới không. Giờ nhấc 0.14, và `AreaBurstLayer` cũng được nâng từ 0.06 lên
+   0.14 vì 0.06 chỉ vượt sàn bốn phần nghìn unit.
+
+Bài học chung với chuyện "vệt teo về một điểm" ở trên: **với hiệu ứng đồ hoạ, chỉ số đúng
+không chứng minh được gì cả.** Ba lần trong đợt này tôi có đủ số liệu nói "nó đang chạy" và
+cả ba lần màn hình trống. Cách duy nhất là chụp ảnh và nhìn.
 
 ### Chế độ trình diễn thần thông
 

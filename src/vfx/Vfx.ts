@@ -7,7 +7,7 @@ import { AreaBurstLayer } from './AreaBurst'
 import { BreakthroughFx } from './BreakthroughFx'
 import { GroundMarkLayer } from './GroundMarks'
 import { LightningBolt } from './LightningBolt'
-import { ParticleLayer, type EmitOptions } from './Particles'
+import { FootAuraLayer } from './FootAura'
 import { NO_TRAIL, RibbonTrailLayer, type TrailOptions } from './RibbonTrails'
 import { FloatingTextLayer } from './FloatingText'
 import { ImpactShardLayer } from './ImpactShards'
@@ -24,37 +24,40 @@ const ELEMENT_COLOR: Record<string, number> = {
   vo: Palette.linh,
 }
 
-/** Màu thứ hai của mỗi hệ — mỗi hạt lấy một sắc giữa hai màu. */
-const ELEMENT_COLOR_2: Record<string, number> = {
-  kim: Palette.vang,
-  moc: Palette.doc,
-  thuy: Palette.loi,
-  hoa: Palette.luaDan,
-  tho: Palette.datDam,
-  vo: Palette.linhDam,
-}
-
 /**
- * Dáng hạt theo ngũ hành.
+ * Cặp màu vệt ribbon theo ngũ hành — ĐẦU vệt và ĐUÔI vệt.
  *
- * Mỗi hệ một CHẤT khác nhau, không chỉ khác màu:
- *  - Hoả: đốm than bay LÊN, trọng lực âm nhẹ, lực cản cao — như tro nóng.
- *  - Thuỷ: mảnh băng RƠI xuống, trọng lực mạnh, không cản — như đá vụn.
- *  - Kim: tia lửa bắn thẳng và nhanh, tắt sớm — như kim khí chạm nhau.
- *  - Mộc: đốm lơ lửng, cản rất cao — như lá và phấn hoa.
- * Chỉ đổi màu thì bảy chiêu trông như một chiêu bảy màu.
+ * Mỗi hệ đi từ một màu NÓNG SÁNG ở đầu sang màu ĐẶC TRƯNG của hệ ở đuôi. Chỉ
+ * đổi một màu thì bảy chiêu trông như một chiêu bảy màu; đổi cả cặp thì mỗi
+ * chiêu có một đường chuyển màu riêng, và đó là thứ đọc được cả khi vệt chỉ hiện
+ * hai phần mười giây.
+ *
+ * Đầu vệt của hệ nào cũng sáng và ngả vàng/trắng có lý do: đầu vệt là chỗ vừa
+ * xảy ra lực, và mắt đọc "sáng gắt" thành "mạnh". Để đầu vệt đúng màu hệ thì
+ * hoả cầu ra một vệt đỏ đều tay, nhìn như một dải sơn.
  */
-const ELEMENT_PARTICLE: Record<string, Partial<EmitOptions>> = {
-  hoa: { shape: 'mote', gravity: 2.4, drag: 3.4, life: [0.5, 1.0], lift: 1.6, fade: 'pop' },
-  thuy: { shape: 'shard', gravity: -22, drag: 0, life: [0.4, 0.8], spin: 16 },
-  kim: { shape: 'spark', gravity: -6, drag: 1.2, life: [0.2, 0.4], speed: [7, 13] },
-  moc: { shape: 'mote', gravity: -1.2, drag: 4.5, life: [0.7, 1.3], lift: 0.8 },
-  tho: { shape: 'shard', gravity: -20, drag: 0.5, life: [0.4, 0.7] },
-  vo: { shape: 'mote', gravity: -2, drag: 3, life: [0.5, 0.9], lift: 1 },
+const ELEMENT_TRAIL: Record<string, { head: number; tail: number }> = {
+  /** Kim quang: trắng ngà sang vàng đồng. */
+  kim: { head: 0xfff3c0, tail: 0xd99b2c },
+  /** Mộc: vàng chanh sang lục thẫm — tông của trúc. */
+  moc: { head: 0xdcf46e, tail: 0x2f9e55 },
+  /** Thuỷ: băng trắng sang lam sâu. */
+  thuy: { head: 0xd8f6ff, tail: 0x2f7fd6 },
+  /** Hoả: vàng lửa sang đỏ than. */
+  hoa: { head: 0xffd45e, tail: 0xd8341a },
+  /** Thổ: cát sang nâu đất. */
+  tho: { head: 0xf4cc86, tail: 0x8a5524 },
+  /** Không thuộc hệ nào: cặp chủ đạo. */
+  vo: { head: Palette.vetVang, tail: Palette.vetLuc },
 }
 
-function elementParticle(element: string): Partial<EmitOptions> {
-  return ELEMENT_PARTICLE[element] ?? ELEMENT_PARTICLE.vo!
+/** Sấm: trắng xanh sang lam điện — chỉ Thiên Lôi Phù dùng. */
+const TRAIL_LOI = { head: 0xeaf7ff, tail: 0x6f9fff }
+/** Ma đạo: huyết sang tím đen. */
+const TRAIL_MA = { head: 0xd94a52, tail: Palette.aoMaDao }
+
+function elementTrail(element: string): { head: number; tail: number } {
+  return ELEMENT_TRAIL[element] ?? ELEMENT_TRAIL.vo!
 }
 
 /**
@@ -75,8 +78,6 @@ const TRAIL_TAIL = Palette.vetLuc
 const TRAIL_HEAD_MA = 0xd94a52
 const TRAIL_TAIL_MA = Palette.aoMaDao
 
-/** Nhịp nhả hạt linh khí theo bước chân, giây. */
-const MOTE_INTERVAL = 0.075
 
 /**
  * Bộ mặt của toàn bộ hiệu ứng.
@@ -93,17 +94,20 @@ export class Vfx {
   readonly burst: AreaBurstLayer
   readonly shield: ShieldBubble
   readonly breakthrough: BreakthroughFx
-  readonly particles: ParticleLayer
   readonly marks: GroundMarkLayer
   readonly lightning: LightningBolt
   readonly trails: RibbonTrailLayer
+  readonly footAura: FootAuraLayer
 
   private readonly unsubscribe: Array<() => void> = []
   /** Handle của các vệt đang bám theo chủ thể, tra theo khoá của cảnh. */
   private readonly follows = new Map<string, number>()
   /** Đảo chiều quét của vệt chém sau mỗi nhát, để combo không lặp một động tác. */
   private slashFlip = false
-  private moteTimer = 0
+  /** Đếm tới lần nhả hào quang dưới chân kế tiếp. */
+  private auraTimer = 0
+  /** Đổi bên mỗi lần nhả hào quang, để nó đọc ra là từng BƯỚC chân. */
+  private auraSide = 1
 
   constructor(
     scene: Scene,
@@ -118,20 +122,20 @@ export class Vfx {
     this.burst = new AreaBurstLayer()
     this.shield = new ShieldBubble()
     this.breakthrough = new BreakthroughFx()
-    this.particles = new ParticleLayer()
     this.marks = new GroundMarkLayer()
     this.lightning = new LightningBolt()
     this.trails = new RibbonTrailLayer()
+    this.footAura = new FootAuraLayer()
 
     this.group.add(this.slash.group)
     this.group.add(this.shards.group)
     this.group.add(this.burst.group)
     this.group.add(this.shield.group)
     this.group.add(this.breakthrough.group)
-    this.group.add(this.particles.group)
     this.group.add(this.marks.group)
     this.group.add(this.lightning.group)
     this.group.add(this.trails.group)
+    this.group.add(this.footAura.group)
     scene.add(this.group)
 
     this.unsubscribe.push(
@@ -147,20 +151,20 @@ export class Vfx {
           size: e.crit ? 0.07 : 0.052,
         })
 
-        // Tia lửa: cái làm cú đánh có SỨC. Mảnh vỡ nói "có gì vừa vỡ", tia lửa
-        // nói "vừa có một lực rất mạnh đi qua đây".
+        // Nan hoa: cái làm cú đánh có SỨC. Mảnh vỡ nói "có gì vừa vỡ", nan hoa
+        // nói "vừa có một lực rất mạnh đi qua đây". Ngắn và bắn thẳng ra, nên
+        // mắt đọc ra hướng lực chứ chỉ là một đám sáng.
         if (!e.dot) {
-          this.particles.emit(e.x, e.y, e.z, this.rng, {
-            count: e.crit ? 22 : 9,
-            shape: 'spark',
-            color: playerHit ? Palette.maHuyet : Palette.vang,
-            color2: playerHit ? Palette.hoa : Palette.kim,
-            pattern: 'sphere',
-            speed: e.crit ? [9, 17] : [5, 10],
-            size: [0.022, 0.05],
-            life: [0.14, 0.32],
-            gravity: -8,
-            drag: 2.2,
+          const tone = playerHit ? TRAIL_MA : e.crit ? ELEMENT_TRAIL.kim! : ELEMENT_TRAIL.vo!
+          this.spokes(e.x, e.y, e.z, e.crit ? 8 : 5, {
+            ...tone,
+            inner: 0.06,
+            outer: e.crit ? 1.5 : 0.9,
+            rise: e.crit ? 0.7 : 0.4,
+            width: e.crit ? 0.075 : 0.05,
+            opacity: e.crit ? 0.9 : 0.75,
+            fade: e.crit ? 0.22 : 0.16,
+            points: 4,
           })
         }
 
@@ -196,25 +200,21 @@ export class Vfx {
 
     this.unsubscribe.push(
       bus.on('skill:cast', (e) => {
-        // Tụ khí: hạt bay VÀO người trong lúc đang niệm. Đây là thứ làm chiêu có
-        // cảm giác được dựng lên thay vì bật ra từ không khí — và nó cũng là lời
-        // báo trước cho đối thủ, nên nó vừa đẹp vừa công bằng.
+        // Tụ khí: nan hoa chạy VÀO người trong lúc đang niệm — `inward` nên đầu
+        // vệt nằm ở tâm, tức chỗ sáng nhất là chỗ linh khí đang tụ lại. Đây là
+        // thứ làm chiêu có cảm giác được dựng lên thay vì bật ra từ không khí,
+        // và nó cũng là lời báo trước cho đối thủ, nên vừa đẹp vừa công bằng.
         if (e.castTime < 0.12) return
-        const color = ELEMENT_COLOR[e.element] ?? Palette.linh
-        this.particles.emit(e.x, e.y + 0.4, e.z, this.rng, {
-          count: 16,
-          shape: 'mote',
-          color,
-          color2: ELEMENT_COLOR_2[e.element] ?? Palette.linhDam,
-          pattern: 'implode',
-          radius: 2.2,
-          // Đủ nhanh để về tới người đúng lúc chiêu phát: quãng đường ~2.2 unit
-          speed: [2.2 / Math.max(0.12, e.castTime), 3.4 / Math.max(0.12, e.castTime)],
-          size: [0.03, 0.06],
-          life: [e.castTime, e.castTime * 1.15],
-          gravity: 0,
-          drag: 0,
-          fade: 'pop',
+        const tone = elementTrail(e.element)
+        this.spokes(e.x, e.y + 0.35, e.z, 7, {
+          ...tone,
+          inner: 0.2,
+          outer: 2.1,
+          rise: 0.5,
+          width: 0.075,
+          opacity: 0.6,
+          // Tan đúng bằng thời gian dẫn khí: vệt còn ở đó cho tới lúc chiêu phát
+          fade: Math.min(0.9, e.castTime),
         })
       }),
     )
@@ -222,9 +222,12 @@ export class Vfx {
     this.unsubscribe.push(
       bus.on('skill:area', (e) => {
         const color = ELEMENT_COLOR[e.element] ?? Palette.linh
-        const color2 = ELEMENT_COLOR_2[e.element] ?? Palette.linhDam
         const isLightning = e.skillId === 'thienLoiPhu'
         const isSlam = e.skillId === 'bossSlam'
+        // Sấm và đòn giộng của boss có cặp màu RIÊNG, không lấy theo ngũ hành:
+        // cả hai đều là 'kim' nên nếu lấy theo hệ thì tia sét ra màu vàng đồng
+        // và cú giộng của Mặc Đại Phu trông như một chiêu kim quang chính đạo.
+        const tone = isLightning ? TRAIL_LOI : isSlam ? TRAIL_MA : elementTrail(e.element)
 
         // Thiên Lôi Phù KHÔNG dùng cột của AreaBurst nữa: giờ đã có tia sét
         // thật, và cái cột chỉ che mất nó. Còn lại chỉ là vòng loang trên đất.
@@ -245,31 +248,33 @@ export class Vfx {
           this.lightning.strike(e.x, e.y, e.z, this.rng, { height: 18, width: 0.26 })
         }
 
-        // Hạt theo CHẤT của ngũ hành, không chỉ theo màu
-        const profile = elementParticle(e.element)
-        this.particles.emit(e.x, e.y + 0.25, e.z, this.rng, {
-          count: Math.round(18 + e.radius * 5),
-          color,
-          color2,
-          pattern: 'dome',
-          speed: [3, 4 + e.radius * 1.6],
-          size: [0.035, 0.075],
-          ...profile,
+        // Nan hoa chạy tới ĐÚNG mép pháp vực. Nó vẽ ra chính tầm của chiêu, nên
+        // người chơi học được bán kính mà không cần một vòng chỉ dẫn nào — đây
+        // là việc mà vòng hạt bắn ngang trước kia làm, và nan hoa làm rõ hơn vì
+        // nó là những đường liền chỉ thẳng ra mép.
+        this.spokes(e.x, e.y + 0.18, e.z, Math.round(6 + e.radius * 1.6), {
+          ...tone,
+          inner: 0.25,
+          outer: e.radius,
+          rise: isLightning ? 1.5 : 0.55,
+          width: 0.07,
+          opacity: 0.6,
+          fade: isLightning ? 0.3 : 0.42,
         })
-        // Vòng hạt bắn ngang theo mép pháp vực — nó vẽ ra ĐÚNG tầm của chiêu,
-        // nên người chơi học được bán kính mà không cần một vòng chỉ dẫn nào
-        this.particles.emit(e.x, e.y + 0.12, e.z, this.rng, {
-          count: Math.round(10 + e.radius * 4),
-          color: color2,
-          color2: color,
-          pattern: 'ring',
-          radius: e.radius * 0.85,
-          speed: [1.4, 3.2],
-          size: [0.03, 0.06],
-          life: [0.3, 0.6],
-          gravity: -9,
-          drag: 1.6,
-        })
+        // Và ba vòng xoắn bốc lên ở tâm: pháp vực không chỉ loang ngang, nó còn
+        // có một cột khí ở giữa. Không có nó thì chiêu diện rộng nào cũng dẹt.
+        for (let i = 0; i < 3; i++) {
+          this.trails.strokeSpiral(
+            e.x,
+            e.y,
+            e.z,
+            e.radius * 0.3,
+            1.5 + e.radius * 0.25,
+            1.3,
+            (i / 3) * Math.PI * 2,
+            { ...tone, width: 0.06, opacity: 0.55, fade: 0.5 },
+          )
+        }
 
         // Vết còn lại: bằng chứng rằng chỗ đó vừa bị đánh
         this.marks.spawn(e.x, e.y, e.z, e.radius * 0.95, {
@@ -287,6 +292,16 @@ export class Vfx {
     this.unsubscribe.push(
       bus.on('skill:buff', (e) => {
         this.burst.spawn(e.x, e.y, e.z, 1.4, { color: Palette.kim, life: 0.45 })
+        // Bốn dải kim quang cuộn lên quanh người: khiên là thứ được DỰNG LÊN, và
+        // đường xoắn đi lên là cách nói điều đó mà không cần một chữ nào
+        for (let i = 0; i < 4; i++) {
+          this.trails.strokeSpiral(e.x, e.y, e.z, 0.62, 1.9, 1.1, (i / 4) * Math.PI * 2, {
+            ...ELEMENT_TRAIL.kim!,
+            width: 0.06,
+            opacity: 0.7,
+            fade: 0.55,
+          })
+        }
         this.floats.spawn(e.x, e.y + 1.4, e.z, `⛨ ${e.magnitude}`, 'info')
       }),
     )
@@ -337,21 +352,17 @@ export class Vfx {
           size: 0.055,
         })
         this.floats.spawn(e.x, e.y + 1.6, e.z, e.realmName, 'heal')
-        // Linh khí xoáy lên theo người: nhẹ, nhưng đủ để lên tầng có cảm giác
-        this.particles.emit(e.x, e.y, e.z, this.rng, {
-          count: 14,
-          shape: 'mote',
-          color: Palette.linh,
-          color2: Palette.linhDam,
-          pattern: 'ring',
-          radius: 0.6,
-          speed: [0.4, 1.2],
-          size: [0.03, 0.06],
-          life: [0.7, 1.2],
-          gravity: 0.6,
-          drag: 1.2,
-          lift: 2.4,
-        })
+        // Linh khí xoáy lên theo người: nhẹ, nhưng đủ để lên tầng có cảm giác.
+        // Ba dải, không phải mười: lên tầng nhỏ phải nhỏ hơn đột phá đại cảnh
+        // giới, và số dải là cách chia bậc rõ hơn cả màu hay bề rộng.
+        for (let i = 0; i < 3; i++) {
+          this.trails.strokeSpiral(e.x, e.y, e.z, 0.58, 1.7, 1.2, (i / 3) * Math.PI * 2, {
+            ...ELEMENT_TRAIL.vo!,
+            width: 0.055,
+            opacity: 0.7,
+            fade: 0.6,
+          })
+        }
       }),
     )
 
@@ -366,68 +377,37 @@ export class Vfx {
         })
 
         if (e.success) {
-          // Ba lớp: tia kim quang bắn thẳng lên, vòng hạt loang ra mặt đất, và
-          // đốm linh khí lơ lửng ở lại lâu nhất. Đây là khoảnh khắc đáng nhớ
-          // nhất của bản demo nên nó được nhiều lớp nhất.
-          this.particles.emit(e.x, e.y, e.z, this.rng, {
-            count: 40,
-            shape: 'spark',
-            color: Palette.kim,
-            color2: Palette.vang,
-            pattern: 'cone',
-            dirX: 0,
-            dirZ: 0,
-            arc: 0.25,
-            speed: [14, 26],
-            size: [0.03, 0.07],
-            life: [0.5, 1],
-            gravity: -6,
-            drag: 0.8,
-            lift: 8,
+          // Ba lớp: nan hoa kim quang bắn thẳng lên, nan hoa loang ra mặt đất,
+          // và tám dải xoắn cuộn lên ở lại lâu nhất. Đây là khoảnh khắc đáng
+          // nhớ nhất của bản demo nên nó được nhiều lớp nhất — và cách chia bậc
+          // là SỐ DẢI, không phải bề rộng: 8 dải so với 3 dải của lên tầng nhỏ.
+          this.spokes(e.x, e.y + 0.2, e.z, 10, {
+            ...ELEMENT_TRAIL.kim!,
+            inner: 0.1,
+            outer: 1.1,
+            rise: 5.5,
+            width: 0.1,
+            opacity: 0.95,
+            fade: 0.7,
           })
-          this.particles.emit(e.x, e.y + 0.1, e.z, this.rng, {
-            count: 26,
-            shape: 'shard',
-            color: Palette.kim,
-            color2: Palette.linh,
-            pattern: 'ring',
-            radius: 1.2,
-            speed: [5, 11],
-            size: [0.05, 0.1],
-            life: [0.5, 0.95],
-            gravity: -12,
+          this.spokes(e.x, e.y + 0.05, e.z, 12, {
+            ...ELEMENT_TRAIL.vo!,
+            inner: 0.4,
+            outer: 4.6,
+            rise: 0.35,
+            width: 0.1,
+            opacity: 0.8,
+            fade: 0.85,
           })
-          this.particles.emit(e.x, e.y + 0.6, e.z, this.rng, {
-            count: 30,
-            shape: 'mote',
-            color: Palette.linh,
-            color2: Palette.kim,
-            pattern: 'sphere',
-            speed: [1, 3.4],
-            size: [0.035, 0.07],
-            life: [1.4, 2.4],
-            gravity: 0.4,
-            drag: 1.6,
-            lift: 1.2,
-            fade: 'pop',
-          })
-          // Luồng kim quang cuộn lên theo cột sáng. CHỈ dùng `haze`, không dùng
-          // `smoke`: đột phá là ánh sáng bốc lên, không phải một vụ cháy — khói
-          // tối ở đây sẽ làm bẩn đúng khoảnh khắc đáng nhớ nhất của bản demo.
-          this.particles.emit(e.x, e.y + 0.3, e.z, this.rng, {
-            count: 20,
-            shape: 'haze',
-            color: Palette.kim,
-            color2: Palette.linh,
-            pattern: 'ring',
-            radius: 0.9,
-            speed: [0.6, 1.8],
-            size: [0.7, 1.5],
-            life: [1.3, 2.2],
-            gravity: 1.6,
-            drag: 1.8,
-            lift: 3.2,
-          })
+          for (let i = 0; i < 8; i++) {
+            this.trails.strokeSpiral(e.x, e.y, e.z, 1.15, 4.4, 1.8, (i / 8) * Math.PI * 2, {
+              head: Palette.kim,
+              tail: Palette.vetLuc,
+              width: 0.09,
+              opacity: 0.9,
+              fade: 1.5,
+            })
+          }
           this.marks.spawn(e.x, e.y, e.z, 5.5, { color: Palette.kim, life: 3.2, opacity: 0.3 })
         }
         this.floats.spawn(
@@ -452,19 +432,17 @@ export class Vfx {
           speed: 5.4,
           size: 0.06,
         })
-        // Bụi nặng bốc lên rồi rơi lại: cái xác để lại dấu, không tan vào không khí
-        this.particles.emit(e.x, e.y + 0.2, e.z, this.rng, {
-          count: 16,
-          shape: 'mote',
-          color: Palette.maHuyet,
-          color2: Palette.aoMaDaoDam,
-          pattern: 'dome',
-          speed: [1.6, 3.6],
-          size: [0.05, 0.1],
-          life: [0.6, 1.1],
-          gravity: -5,
-          drag: 2.6,
-          lift: 0.9,
+        // Nan hoa huyết khí tản ra SÁT ĐẤT: cái xác để lại dấu, không tan vào
+        // không khí. `rise` thấp là chỗ khác biệt với vụ nổ — nó xẹp xuống chứ
+        // không bốc lên, và đó là cách nói "tắt" chứ không phải "phát ra".
+        this.spokes(e.x, e.y + 0.12, e.z, 6, {
+          ...TRAIL_MA,
+          inner: 0.1,
+          outer: 1.2,
+          rise: 0.15,
+          width: 0.075,
+          opacity: 0.7,
+          fade: 0.4,
         })
       }),
     )
@@ -494,22 +472,129 @@ export class Vfx {
       opacity: friendly ? 0.95 : 0.8,
       fade: 0.26,
     })
-    // Bụi bốc theo lưỡi: chỉ vài hạt, và cố ý chụm hẹp theo hướng vung — nó nói
-    // cho mắt biết đòn đi về phía nào, thứ mà một dải ribbon mờ không nói rõ
-    this.particles.emit(x + Math.sin(facing) * radius * 0.6, y + 0.25, z + Math.cos(facing) * radius * 0.6, this.rng, {
-      count: 5,
-      shape: 'spark',
-      color,
-      color2: Palette.vang,
-      pattern: 'cone',
-      dirX: Math.sin(facing),
-      dirZ: Math.cos(facing),
-      arc: 0.7,
-      speed: [3, 6.5],
-      size: [0.02, 0.04],
-      life: [0.12, 0.24],
-      gravity: -6,
-      drag: 3,
+    // Hai nan hoa bắn thẳng theo hướng vung, ở đúng đầu lưỡi. Cung nói "cả vùng
+    // này bị quét", dải nói "lưỡi đi theo đường này" — còn hai nan hoa này nói
+    // ĐÒN ĐI VỀ PHÍA NÀO, thứ mà một đường cung đối xứng không nói rõ.
+    const tipX = x + Math.sin(facing) * radius * 0.85
+    const tipZ = z + Math.cos(facing) * radius * 0.85
+    for (let i = 0; i < 2; i++) {
+      const a = facing + this.rng.float(-0.3, 0.3)
+      const len = radius * this.rng.float(0.3, 0.5)
+      this.trails.strokeLine(
+        tipX,
+        y + 0.42,
+        tipZ,
+        tipX + Math.sin(a) * len,
+        y + 0.5,
+        tipZ + Math.cos(a) * len,
+        {
+          head: friendly ? TRAIL_HEAD : TRAIL_MA.head,
+          tail: friendly ? TRAIL_TAIL : TRAIL_MA.tail,
+          width: 0.08,
+          opacity: 0.8,
+          fade: 0.16,
+          points: 4,
+        },
+      )
+    }
+  }
+
+  /**
+   * Chùm nan hoa ribbon toả ra từ một điểm — thứ THAY THẾ cho tia lửa hạt.
+   *
+   * ## Đầu vệt LUÔN ở tâm
+   *
+   * Dải thóp dần từ đầu về đuôi, nên đầu vệt là đầu DÀY và CHÓI. Bản đầu tôi đặt
+   * đầu vệt ở mút ngoài — kết quả là mỗi nan hoa dày và sáng nhất ở vành, thóp
+   * lại về tâm, và cả chùm đọc ra là những tia đang CHIẾU VÀO tâm. Ngược hẳn
+   * nghĩa của một vụ nổ.
+   *
+   * Đặt đầu ở tâm thì được đúng hình sao nổ: đặc và chói ở chỗ vừa xảy ra lực,
+   * mảnh và nhạt dần ra ngoài. Và nó đúng cho cả tụ khí — chỗ linh khí đang tụ
+   * cũng là chỗ phải sáng nhất — nên không cần hai chiều, chỉ cần một.
+   *
+   * ## Góc rải đều rồi nhiễu nhẹ
+   *
+   * Không rải hoàn toàn tự do: theo phân bố đúng thì sẽ có mấy nan chồng khít
+   * nhau và cả chùm lệch hẳn về một phía. Với 5 nan thì chuyện đó xảy ra thường
+   * xuyên, và nó đọc ra là hiệu ứng bị lỗi chứ không phải là ngẫu nhiên.
+   */
+  private spokes(
+    x: number,
+    y: number,
+    z: number,
+    count: number,
+    o: TrailOptions & {
+      head: number
+      tail: number
+      /** Bán kính gốc nan hoa. */
+      inner?: number
+      /** Bán kính đầu nan hoa. */
+      outer?: number
+      /** Mút ngoài nan hoa nhấc lên bấy nhiêu. */
+      rise?: number
+    },
+  ): void {
+    const inner = o.inner ?? 0.1
+    const outer = o.outer ?? 1
+    const rise = o.rise ?? 0.3
+    const base = this.rng.float(0, Math.PI * 2)
+    const style: TrailOptions = {
+      head: o.head,
+      tail: o.tail,
+      width: o.width,
+      opacity: o.opacity,
+      fade: o.fade,
+      points: o.points,
+    }
+    for (let i = 0; i < count; i++) {
+      const a = base + (i / count) * Math.PI * 2 + this.rng.float(-0.22, 0.22)
+      const len = outer * this.rng.float(0.62, 1)
+      const up = rise * this.rng.float(0.35, 1)
+      // strokeLine coi điểm THỨ HAI là đầu vệt, nên tâm phải đứng thứ hai
+      this.trails.strokeLine(
+        x + Math.cos(a) * len,
+        y + up,
+        z + Math.sin(a) * len,
+        x + Math.cos(a) * inner,
+        y,
+        z + Math.sin(a) * inner,
+        style,
+      )
+    }
+  }
+
+  /**
+   * Hào quang linh khí toả ra dưới chân khi di chuyển. Cảnh gọi mỗi frame.
+   *
+   * Ngưỡng tốc độ 2.2 chứ không 0: đi bộ chậm mà cũng toả hào quang thì nó mất
+   * hết ý nghĩa — phải là dấu hiệu của "đang lao đi", không phải của "đang tồn tại".
+   *
+   * Vòng được nhả LỆCH SANG HAI BÊN xen kẽ, không phải đúng giữa hai chân. Nhả
+   * đúng giữa thì một chuỗi vòng đồng tâm chồng lên nhau đọc ra là một hiệu ứng
+   * đứng yên đang nhấp nháy; lệch bên thì mắt đọc ra từng BƯỚC CHÂN.
+   */
+  footAuraStep(dt: number, x: number, y: number, z: number, facing: number, speed: number, flying: boolean): void {
+    if (speed < 2.2) {
+      this.auraTimer = 0
+      return
+    }
+    this.auraTimer -= dt
+    if (this.auraTimer > 0) return
+    // Bay thì nhả thưa hơn và vòng to hơn: không có bước chân nào cả, nó là
+    // luồng khí dưới phi kiếm nên nhịp phải chậm và mượt hơn nhịp chạy
+    this.auraTimer = flying ? 0.16 : 0.11
+    this.auraSide = -this.auraSide
+
+    // Lệch ngang so với hướng đang nhìn
+    const sx = Math.cos(facing) * 0.16 * this.auraSide
+    const sz = -Math.sin(facing) * 0.16 * this.auraSide
+    this.footAura.spawn(x + sx, y, z + sz, {
+      color: this.auraSide > 0 ? Palette.vetLuc : Palette.vetVang,
+      from: flying ? 0.35 : 0.2,
+      to: flying ? 1.6 : 0.9,
+      life: flying ? 0.55 : 0.4,
+      peak: flying ? 0.6 : 0.5,
     })
   }
 
@@ -555,39 +640,6 @@ export class Vfx {
   }
 
   /**
-   * Hạt linh khí bốc lên theo bước chân. Cảnh gọi mỗi frame, lớp này tự chặn nhịp.
-   *
-   * Ngưỡng tốc độ 2.2 chứ không 0: đi bộ chậm mà cũng toé hạt thì hạt mất hết ý
-   * nghĩa — nó phải là dấu hiệu của "đang lao đi", không phải của "đang tồn tại".
-   */
-  motionMotes(dt: number, x: number, y: number, z: number, speed: number, flying: boolean): void {
-    if (speed < 2.2) {
-      this.moteTimer = 0
-      return
-    }
-    this.moteTimer -= dt
-    if (this.moteTimer > 0) return
-    this.moteTimer = MOTE_INTERVAL
-
-    this.particles.emit(x, y + (flying ? 0.1 : 0.12), z, this.rng, {
-      count: flying ? 3 : 2,
-      shape: 'mote',
-      color: TRAIL_TAIL,
-      color2: TRAIL_HEAD,
-      pattern: 'dome',
-      speed: flying ? [1.2, 3] : [0.5, 1.6],
-      size: [0.02, 0.045],
-      life: [0.28, 0.6],
-      // Trọng lực ÂM nhẹ + cản cao: hạt dâng lên rồi đứng lại thành một vệt sương
-      // ở lại phía sau. Trọng lực dương thì chúng rơi xuống thành bụi đất.
-      gravity: -1.6,
-      drag: 3.6,
-      lift: flying ? 1.4 : 0.9,
-      fade: 'pop',
-    })
-  }
-
-  /**
    * Cấu hình vệt dải cho phi hành khí theo ngũ hành.
    *
    * Đầu vệt lấy MÀU CỦA HỆ, không phải vàng kim như các vệt khác: hoả cầu và
@@ -597,8 +649,7 @@ export class Vfx {
    */
   projectileTrail(element: string): TrailOptions {
     return {
-      head: ELEMENT_COLOR[element] ?? TRAIL_HEAD,
-      tail: ELEMENT_COLOR_2[element] ?? TRAIL_TAIL,
+      ...elementTrail(element),
       width: 0.14,
       opacity: 0.85,
       fade: 0.3,
@@ -608,102 +659,53 @@ export class Vfx {
     }
   }
 
-  /** Vệt sau phi hành khí. ProjectileSystem gọi qua hook onTrail. */
-  spawnTrail(x: number, y: number, z: number, vx: number, vz: number, element: string): void {
-    const color = ELEMENT_COLOR[element] ?? Palette.linh
-    const profile = elementParticle(element)
-    // Bắn NGƯỢC hướng bay: vệt phải ở lại phía sau, không đi cùng viên đạn
-    const len = Math.hypot(vx, vz) || 1
-    this.particles.emit(x, y, z, this.rng, {
-      count: 2,
-      color,
-      color2: ELEMENT_COLOR_2[element] ?? Palette.linhDam,
-      pattern: 'cone',
-      dirX: -vx / len,
-      dirZ: -vz / len,
-      arc: 0.5,
-      speed: [0.6, 2],
-      size: [0.025, 0.055],
-      life: [0.2, 0.45],
-      ...profile,
-      // Vệt không được bay xa khỏi đường đạn, nên cản cao và trọng lực nhẹ
-      gravity: (profile.gravity ?? -8) * 0.3,
-      drag: 4,
-    })
-  }
-
   /** Vụ nổ của phi hành khí — ProjectileSystem gọi qua hook onExplode. */
   spawnExplosion(x: number, y: number, z: number, radius: number, element: string): void {
     const color = ELEMENT_COLOR[element] ?? Palette.hoa
-    const color2 = ELEMENT_COLOR_2[element] ?? Palette.luaDan
+    const tone = elementTrail(element)
     this.burst.spawn(x, y - 0.4, z, radius, { color, life: 0.55 })
     this.shards.burst(x, y, z, this.rng, { count: 18, color, speed: 6, size: 0.07 })
 
-    // Ba lớp cho một vụ nổ: tia lửa bắn thẳng ra, đốm bay lên, vết cháy ở lại.
-    // Một lớp duy nhất thì vụ nổ nào cũng giống nhau, dù đổi màu.
-    this.particles.emit(x, y, z, this.rng, {
-      count: 20,
-      shape: 'spark',
-      color,
-      color2,
-      pattern: 'sphere',
-      speed: [7, 15],
-      size: [0.025, 0.055],
-      life: [0.18, 0.4],
-      gravity: -10,
-      drag: 2.4,
+    // Ba lớp cho một vụ nổ: nan hoa bắn ngang ra, nan hoa bốc lên, vết cháy ở
+    // lại. Một lớp duy nhất thì vụ nổ nào cũng giống nhau, dù đổi màu.
+    this.spokes(x, y, z, Math.round(7 + radius * 2), {
+      ...tone,
+      inner: 0.12,
+      outer: radius * 1.35,
+      rise: 0.4,
+      width: 0.085,
+      opacity: 0.8,
+      fade: 0.3,
     })
-    this.particles.emit(x, y, z, this.rng, {
-      count: 14,
-      ...elementParticle(element),
-      color,
-      color2,
-      pattern: 'dome',
-      speed: [2, 5],
-      size: [0.04, 0.085],
+    this.spokes(x, y + 0.1, z, 5, {
+      ...tone,
+      inner: 0.3,
+      outer: radius * 0.5,
+      rise: radius * 1.5,
+      width: 0.075,
+      opacity: 0.75,
+      fade: 0.45,
     })
     this.marks.spawn(x, y - 0.5, z, radius * 0.8, { color, life: 2.2, opacity: 0.28 })
 
-    // CHỈ hệ Hoả dùng billboard mềm. Đây là hai dáng duy nhất phá quy tắc
-    // lowpoly, nên chúng được dùng đúng ở nơi khối đặc không làm được. Băng vỡ
-    // và kim khí thì khối đặc diễn đúng hơn nên chúng không dùng.
+    // Hệ Hoả được thêm hai dải xoắn cuộn lên — chỗ duy nhất trong bộ hiệu ứng
+    // mô tả "khí nóng bốc lên sau vụ nổ". Băng vỡ và kim khí thì không: chúng
+    // tan tại chỗ, và cho chúng cuộn lên là nói sai về chất của chúng.
     if (element === 'hoa') {
-      // Loé sáng TRƯỚC: ngắn, sáng, ở ngay tâm nổ
-      this.particles.emit(x, y - 0.1, z, this.rng, {
-        count: 9,
-        shape: 'haze',
-        color: Palette.luaDan,
-        color2: Palette.vang,
-        pattern: 'dome',
-        speed: [1.2, 3],
-        size: [0.5, 0.95],
-        life: [0.28, 0.5],
-        gravity: 1.6,
-        drag: 3.4,
-        lift: 1.2,
-      })
-      // Khói SAU: tối, chậm, ở lại lâu hơn gấp ba
-      this.particles.emit(x, y - 0.2, z, this.rng, {
-        count: 10,
-        shape: 'smoke',
-        color: 0x39322c,
-        color2: 0x5a4c40,
-        pattern: 'dome',
-        speed: [0.6, 1.7],
-        size: [0.45, 0.9],
-        life: [1.1, 1.9],
-        gravity: 1,
-        drag: 2.6,
-        lift: 1.5,
-      })
+      for (let i = 0; i < 2; i++) {
+        this.trails.strokeSpiral(x, y, z, radius * 0.34, radius * 1.6, 1, i * Math.PI, {
+          ...tone,
+          width: 0.09,
+          opacity: 0.6,
+          fade: 0.7,
+        })
+      }
     }
-
-    this.bus.emit('camera:shake', { magnitude: 0.14, duration: 0.2 })
   }
 
   update(dt: number, camera: PerspectiveCamera, width: number, height: number): void {
     this.breakthrough.update(dt)
-    this.particles.update(dt, camera)
+    this.footAura.update(dt)
     this.marks.update(dt)
     this.lightning.update(dt)
     this.slash.update(dt)
@@ -720,7 +722,7 @@ export class Vfx {
     this.burst.dispose()
     this.shield.dispose()
     this.breakthrough.dispose()
-    this.particles.dispose()
+    this.footAura.dispose()
     this.marks.dispose()
     this.lightning.dispose()
     this.trails.dispose()

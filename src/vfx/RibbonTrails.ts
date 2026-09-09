@@ -15,17 +15,22 @@ import { Palette } from '@/art/Palette'
 /**
  * Số vệt tối đa cùng tồn tại.
  *
- * 64 chứ không 28: Thanh Trúc Phong Vân Kiếm một mình đã cần 33 ô, và nó phát
- * được giữa lúc đang chạy (1 ô), đang có cả đàn phi hành khí bay (tới ~12 ô) và
- * đang chém (1 ô một lần). Ở 28 thì đàn kiếm chiếm hết hồ và `pick()` bắt đầu
- * cắt vệt của những thứ khác — mà cắt vệt đang bám thì nó MẤT ĐỘT NGỘT giữa
- * đường, chứ không tan.
+ * Rộng vì dải ribbon giờ là phương tiện chính của MỌI hiệu ứng, không chỉ vệt
+ * đuôi: Thanh Trúc Phong Vân Kiếm một mình đã cần 33 ô, cộng vệt người chơi,
+ * cả đàn phi hành khí (tới ~12 ô), và mỗi cú đánh trúng / vụ nổ / pháp vực lại
+ * bắn ra một chùm 4–10 nan hoa. Hồ chật thì `pick()` bắt đầu cắt vệt ĐANG BÁM —
+ * mà cắt vệt đang bám thì nó mất đột ngột giữa đường, chứ không tan.
+ *
+ * 128 là con số ĐO ĐƯỢC, không phải chọn bừa. Lúc nặng nhất — 33 kiếm trúc +
+ * vệt chạy + hai vụ nổ + một pháp vực — đếm được 96 vệt cùng sống, tức đúng
+ * bằng hạn mức cũ: hồ bão hoà và các nét một lần bắt đầu bị cắt sớm. 128 để
+ * đúng khoảnh khắc đó còn dư chỗ.
  *
  * Chi phí của việc để rộng gần bằng không: hình học được cấp sẵn toàn bộ, và ô
  * không dùng bị gộp về một điểm nên tam giác của nó có diện tích 0 — GPU không
- * tô pixel nào, chỉ chạy đỉnh. 64 ô là 2304 đỉnh và 2176 tam giác.
+ * tô pixel nào, chỉ chạy đỉnh. 128 ô là 4608 đỉnh và 4352 tam giác.
  */
-export const TRAIL_CAPACITY = 64
+export const TRAIL_CAPACITY = 128
 /** Số điểm xương sống của một vệt. Nhiều hơn = vệt dài và mượt hơn, tốn hơn. */
 export const TRAIL_SEGMENTS = 18
 
@@ -376,6 +381,38 @@ export class RibbonTrailLayer {
       p[i * 3] = x + Math.sin(a) * radius
       p[i * 3 + 1] = y + Math.sin(u * Math.PI) * radius * 0.12
       p[i * 3 + 2] = z + Math.cos(a) * radius
+    }
+    this.strokePath(p, n, options)
+  }
+
+  /**
+   * Vệt xoắn ốc đi LÊN — linh khí cuộn quanh người lúc lên tầng, đột phá, lên khiên.
+   *
+   * Đầu vệt ở ĐỈNH xoắn và bán kính thóp lại ở trên, nên nó đọc ra là "đang
+   * cuộn lên và tụ vào" chứ không phải "đang rơi xuống và loe ra". Cùng một
+   * đường xoắn mà đảo hai thứ đó là ra hiệu ứng ngược nghĩa hẳn.
+   *
+   * `phase` để nhiều vệt xoắn cùng lúc không trùng khít nhau.
+   */
+  strokeSpiral(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    height: number,
+    turns: number,
+    phase: number,
+    options: TrailOptions = {},
+  ): void {
+    const p = this.pathBuffer
+    const n = SEGMENTS
+    for (let i = 0; i < n; i++) {
+      const u = i / (n - 1)
+      const a = phase + (1 - u) * turns * Math.PI * 2
+      const r = radius * (0.35 + 0.65 * u)
+      p[i * 3] = x + Math.cos(a) * r
+      p[i * 3 + 1] = y + height * (1 - u)
+      p[i * 3 + 2] = z + Math.sin(a) * r
     }
     this.strokePath(p, n, options)
   }

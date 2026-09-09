@@ -433,10 +433,6 @@ export class ArenaScene implements GameScene {
     this.projectiles.onExplode = (x, y, z, radius, spec) => {
       this.vfx.spawnExplosion(x, y, z, radius, spec.element)
     }
-    // Vệt sau viên đạn — ProjectileSystem đã tự chặn nhịp nên gọi thẳng được
-    this.projectiles.onTrail = (x, y, z, vx, vz, spec) => {
-      this.vfx.spawnTrail(x, y, z, vx, vz, spec.element)
-    }
     // Dải đuôi bám theo từng viên, khoá theo `serial` nên hai viên bay cạnh nhau
     // không dùng lẫn vệt của nhau
     this.projectiles.onTrailPath = (serial, x, y, z, spec) => {
@@ -1514,7 +1510,9 @@ export class ArenaScene implements GameScene {
       RUN_TRAIL,
     )
     this.vfx.follow('player:fly', alive && flying, x, p.y + 0.05, z, FLY_TRAIL)
-    if (alive) this.vfx.motionMotes(frameDt, x, p.y, z, speed, flying)
+    if (alive) {
+      this.vfx.footAuraStep(frameDt, x, p.y, z, p.combatant.facing, speed, flying)
+    }
   }
 
   render(_alpha: number, frameDt: number): void {
