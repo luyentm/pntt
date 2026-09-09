@@ -64,6 +64,14 @@ export class Menu {
     return el as T
   }
 
+  /** Máy chỉ có cảm ứng, không có con trỏ chuột thật. */
+  static isTouchOnly(): boolean {
+    return (
+      typeof matchMedia === 'function' &&
+      matchMedia('(hover: none) and (pointer: coarse)').matches
+    )
+  }
+
   get isOpen(): boolean {
     return this.screen !== 'none'
   }
@@ -157,6 +165,18 @@ export class Menu {
     hint.className = 'menu-note menu-note--dim'
     hint.textContent = 'WASD di chuyển · chuột trái đánh · 1…7 pháp thuật · Esc tạm dừng'
     this.body.appendChild(hint)
+
+    // Nói thẳng trên máy chỉ có cảm ứng. Bản này chưa có điều khiển cảm ứng
+    // (plan để dành), và một URL công khai thì sẽ có người mở bằng điện thoại —
+    // để họ tự loay hoay với màn hình không phản hồi là tệ hơn nhiều so với một
+    // dòng chữ nói rõ.
+    if (Menu.isTouchOnly()) {
+      const touch = document.createElement('div')
+      touch.className = 'menu-note'
+      touch.style.color = 'rgba(196, 84, 63, 0.9)'
+      touch.textContent = 'Bản này cần bàn phím và chuột — chưa có điều khiển cảm ứng.'
+      this.body.appendChild(touch)
+    }
   }
 
   /** Bước hỏi lại trước khi xoá tiến độ. */

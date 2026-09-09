@@ -19,6 +19,34 @@ Mở http://localhost:5173
 | `npm run typecheck` | Chỉ kiểm tra type |
 | `npm test` | Chạy test logic (vitest) |
 
+## Triển khai (GitHub Pages)
+
+Đẩy lên `main` là tự deploy — `.github/workflows/deploy.yml` chạy test, build rồi
+publish. **Cần bật một lần** trong repo: *Settings → Pages → Source* chọn
+**GitHub Actions** (không phải "Deploy from a branch"). Sau đó site ở
+`https://<user>.github.io/pntt/`.
+
+Ba điểm phải đúng để chạy được trên Pages, và đều đã xử lý:
+
+- **`base: './'` trong `vite.config.ts`.** Pages của repo phục vụ tại đường dẫn con
+  `/pntt/`, nên base `/` sẽ làm mọi asset trỏ về `https://<user>.github.io/assets/…`
+  và 404 hết. Đóng cứng `/pntt/` thì chạy được Pages nhưng hỏng `vite preview`, hỏng
+  khi mở `dist` từ ổ đĩa, và hỏng luôn nếu repo đổi tên — `./` đúng ở cả bốn.
+  An toàn vì đây là một trang duy nhất, không có router lồng đường dẫn.
+- **`public/.nojekyll`.** Không cần cho đường deploy bằng Actions, nhưng cần ngay khi
+  ai đó chuyển sang deploy từ branch — Jekyll bỏ qua mọi thứ bắt đầu bằng `_`.
+- **Bảng debug ẩn sẵn ở bản phát hành** (`import.meta.env.PROD`), vẫn mở được bằng
+  `` ` ``. Đây là URL công khai: người vào lần đầu mà thấy bảng debug chiếm một phần
+  ba màn hình kèm nút "Nhảy tới Kết Đan" thì vừa không nhìn ra game, vừa mất trắng
+  toàn bộ nội dung mà cả bản demo được xây quanh.
+
+Không có gì cần server: không API, không asset ngoài, không font CDN. `dist` là ba
+file tĩnh (~218 KB gz) chạy được ở bất kỳ host tĩnh nào.
+
+**Chưa có điều khiển cảm ứng** (plan để dành). Menu chính tự phát hiện máy chỉ có
+cảm ứng và nói rõ cần bàn phím + chuột, thay vì để người dùng loay hoay với một màn
+hình không phản hồi.
+
 ## Điều khiển
 
 | Thao tác | Tác dụng |

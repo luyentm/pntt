@@ -1,0 +1,57 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Cho phép chạy tay từ tab Actions
+  workflow_dispatch:
+
+# Quyền tối thiểu để deploy Pages. `id-token` cần cho actions/deploy-pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Đẩy liên tiếp thì huỷ lượt đang chạy, nhưng KHÔNG huỷ lượt đang deploy dở:
+# huỷ giữa lúc deploy có thể để lại site ở trạng thái nửa vời.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` chứ không `npm install`: cài đúng theo package-lock nên bản
+      # deploy dùng chính những phiên bản đã chạy test ở máy
+      - run: npm ci
+
+      # Test TRƯỚC khi build. Deploy một bản hỏng lên URL công khai rồi mới phát
+      # hiện thì tệ hơn nhiều so với để workflow đỏ.
+      - run: npm test
+
+      # `npm run build` đã chạy `tsc --noEmit` bên trong, nên không cần bước
+      # typecheck riêng
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

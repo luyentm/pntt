@@ -136,6 +136,14 @@ export class DebugPanel {
     cam.close()
 
     window.addEventListener('keydown', this.onKey)
+
+    // Bản phát hành thì ẩn sẵn, vẫn mở được bằng `.
+    //
+    // Bản build này được đưa lên GitHub Pages, tức là một URL công khai. Người
+    // vào lần đầu mà thấy bảng debug chiếm một phần ba màn hình — kèm nút "Nhảy
+    // tới Kết Đan" và "+200k Tu Vi" — thì vừa không nhìn ra game, vừa mất trắng
+    // toàn bộ nội dung mà cả bản demo được xây quanh.
+    if (import.meta.env.PROD) this.gui.hide()
   }
 
   private readonly onKey = (e: KeyboardEvent): void => {
