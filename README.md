@@ -444,6 +444,59 @@ Hai chỗ sai mà chỉ thấy được khi xem từng khung hình:
 Mọi con số trên đều dò bằng **mắt trong game** qua nhóm "Ánh sáng" và "Chấm màu" của bảng
 debug, không tính ra — khoảng dùng được hẹp hơn tôi tưởng.
 
+### Bộ ánh sáng stylized/fantasy
+
+`src/render/stylized/` là một bộ ánh sáng + sương mù + hậu kỳ **thứ hai**, độc lập với bộ
+mặc định, bật/tắt được lúc chạy qua nhóm "Stylized / fantasy" của bảng debug (hoặc
+`window.__pntt.stylized`). Ba tệp: `tune.ts` (mọi con số, kèm HEX và khoảng dùng được),
+`StylizedAtmosphere.ts` (dựng và cập nhật), `index.ts` (công tắc A/B).
+
+Tông màu: **vàng cam là nắng**, **lam là bóng đổ và sương**, **đỏ cam là điểm nhấn quanh
+nhân vật**. Điểm cần hiểu trước tiên là **bóng đổ không có màu riêng** — không có tham số
+nào tên là "màu bóng". Vùng bóng chỉ là vùng không nhận được nắng, nên màu của nó hoàn
+toàn do `HemisphereLight` quyết định. Muốn bóng ám lam thì phải làm màu trời của
+hemisphere lam, và nó phải **bão hoà** chứ không chỉ tối: `#2E3A6E` tối nhưng xám nên
+bóng ra xám nâu; `#3D47A8` sáng hơn mà bão hoà hơn, và bóng mới đọc ra lam tím.
+
+Bốn thứ tôi làm sai trước khi ra được cấu hình hiện tại:
+
+- **Phơi sáng đi SAI HƯỚNG.** Tôi để 1.25 vì nghĩ ACESFilmic nén cao sáng nên phải bù
+  lên; kết quả là cả cảnh bạc trắng và bóng mất hết màu. Cách đúng là ngược lại: hạ phơi
+  sáng về 0.95 rồi đẩy nắng từ 2.6 lên 3.4 bù lại. Vùng có nắng sáng y như cũ, nhưng vùng
+  bóng tối hơn nhiều — biên độ sáng-tối rộng ra chính là cảm giác sâu. Hai tham số này
+  chỉnh độc lập được, và đó là mẹo đáng nhớ nhất ở đây.
+- **Đèn điểm đặt BÊN TRONG vật nó rọi.** Bốn đèn lam ban đầu đặt ở `y = 3.1`, đúng chỗ
+  chóp cột đá. Với `decay: 2` thì khoảng cách gần bằng 0 nên chóp cột cháy trắng thành
+  quầng bloom to nhất khung hình, hút mắt khỏi nhân vật — không phải vì candela quá lớn.
+  Hạ về `y = 1.4` (ngang thân cột) thì cùng cường độ ấy lại đổ một vũng lam ra mặt đất.
+- **Đèn ấm đặt trên đỉnh đầu.** `warmHeight = 1.6` làm đèn nằm ngay trên đầu nhân vật, và
+  đèn điểm thẳng trên đầu chỉ rọi được mảng tóc đen — nhìn vào không thấy nhân vật sáng
+  lên chút nào. Hạ về 1.0 (ngang ngực) thì nó rọi thân áo và dội một vũng ấm quanh chân.
+  Bán kính cũng phải gọn: thử 12 thì vũng sáng loang gần hết sân đá và cả sân hoá hồng —
+  điểm nhấn chỉ là điểm nhấn khi có chỗ tối cạnh nó.
+- **Sương quá mỏng để tồn tại.** `FogExp2` mật độ 0.016 nghe hợp lý, nhưng sân đấu chỉ
+  rộng khoảng 30 unit nên mọi thứ trong khung hình mới bị nhuộm ~20%. Phải lên 0.032 thì
+  cỏ ở xa mới thật sự tan vào màu lam.
+
+Hai chi tiết API của three phải kiểm bằng cách đọc mã nguồn của bản đang cài:
+
+- **`OutputPass` là bắt buộc** ở cuối chuỗi `EffectComposer` của addons. Render target
+  của composer là linear HalfFloat, và `OutputPass` chính là pass áp `renderer.toneMapping`
+  + `outputColorSpace`. Thiếu nó thì đặt `ACESFilmicToneMapping` không có tác dụng gì.
+- **`PCFSoftShadowMap` bị hạ cấp lúc chạy.** `WebGLShadowMap.render()` của three 0.185 in
+  cảnh báo rồi tự đổi `this.type = PCFShadowMap` ngay khung hình đầu. Đường bóng mềm thật
+  còn lại là `VSMShadowMap` — nó tôn trọng `shadow.radius`/`shadow.blurSamples`, đổi lại
+  cần `bias` gần 0 chứ không âm sâu như PCF. Đo được: gán `PCFSoftShadowMap` rồi đọc lại
+  `shadowMap.type` thì thấy 2 đã thành 1.
+
+Một bài học về **cách đo**, không về ánh sáng: có hai lượt tôi kết luận "bóng đổ mất hẳn"
+và đi truy nguyên nhân, trong khi bóng vẫn ở đó — công cụ chụp ảnh của pane trình duyệt
+trả về **khung hình cũ** khi cảnh được vẽ ngoài `requestAnimationFrame`. Phải vẽ vài khung
+rồi chụp, và khi một thay đổi "không có tác dụng gì" thì việc cần làm đầu tiên là kiểm
+xem mình có đang xem đúng khung hình không. Cả bộ chỉ số (`shadowMap.type`, số draw call
+tăng 44 khi bật bóng, kích thước shadow map) đều báo bóng vẫn chạy — tôi tin ảnh hơn tin
+số liệu, và đó là chỗ sai.
+
 ### Tự ngắm
 
 - **Bật mặc định.** Ngắm bằng chuột đòi người chơi làm ba việc cùng lúc: bấm WASD để

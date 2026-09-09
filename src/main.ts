@@ -4,6 +4,7 @@ import { realmName } from '@/game/data/realms'
 import { clearSave, describeSave, loadGame, type SaveStorage } from '@/game/SaveGame'
 import { loadSettings, saveSettings, type Settings } from '@/game/Settings'
 import { DebugPanel } from '@/debug/DebugPanel'
+import { StylizedToggle } from '@/render/stylized'
 import { Menu } from '@/ui/Menu'
 import { ArenaScene } from '@/world/ArenaScene'
 
@@ -55,6 +56,10 @@ scene.storage = storage
 // Nạp màn TRƯỚC khi dựng bảng debug: bảng đọc hook debug của màn lúc khởi tạo,
 // nên nếu dựng trước thì nhóm điều khiển chiến đấu sẽ không xuất hiện
 await game.setScene(scene)
+// Bộ môi trường stylized/fantasy — bật/tắt trong bảng debug để so sánh trực
+// tiếp với bộ mặc định trên cùng một cảnh
+const stylized = new StylizedToggle(game)
+game.stylized = stylized
 const debug = new DebugPanel(game)
 const sfx = new Sfx(game.bus, settings.sfxVolume)
 
@@ -189,7 +194,14 @@ document.getElementById('boot')?.classList.add('hidden')
 // Tiện cho việc soi trong console trình duyệt
 declare global {
   interface Window {
-    __pntt?: { game: Game; debug: DebugPanel; scene: ArenaScene; menu: Menu; sfx: Sfx }
+    __pntt?: {
+      game: Game
+      debug: DebugPanel
+      scene: ArenaScene
+      menu: Menu
+      sfx: Sfx
+      stylized: StylizedToggle
+    }
   }
 }
-window.__pntt = { game, debug, scene, menu, sfx }
+window.__pntt = { game, debug, scene, menu, sfx, stylized }

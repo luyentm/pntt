@@ -33,6 +33,28 @@ export class Game {
   private scene: GameScene | null = null
   private paused = false
 
+  /**
+   * Thay thế đường vẽ mặc định.
+   *
+   * Có để cắm được một chuỗi hậu kỳ KHÁC (ví dụ bộ stylized dùng
+   * `EffectComposer` của three addons) mà không phải sửa `Game`. Đặt `null` để
+   * trả về `Composer` mặc định.
+   */
+  renderOverride: ((frameDt: number) => void) | null = null
+
+  /**
+   * Bộ môi trường stylized, nếu có. `main` gán vào.
+   *
+   * `Game` chỉ cần biết ba việc: nhịp nó mỗi khung, đổi cỡ khi khung hình đổi,
+   * và nó có đang bật hay không. Kiểu để lỏng để `Game` không phải import lớp
+   * đó — nếu import thì lõi phụ thuộc vào một tính năng tuỳ chọn.
+   */
+  stylized: {
+    readonly active: boolean
+    update(dt: number, x: number, y: number, z: number): void
+    setSize(width: number, height: number): void
+  } | null = null
+
   constructor(canvas: HTMLCanvasElement, seed = DEFAULT_SEED) {
     this.rng = new Rng(seed)
     this.renderer = new Renderer(canvas)
@@ -46,6 +68,7 @@ export class Game {
     this.renderer.onResize((w, h) => {
       this.camera.setAspect(w, h)
       this.composer.setSize(w, h)
+      this.stylized?.setSize(w, h)
     })
     this.composer.setSize(this.renderer.width, this.renderer.height)
 
@@ -112,9 +135,16 @@ export class Game {
 
     this.camera.update(frameDt)
     this.lighting.update(this.camera.target.x, this.camera.target.y, this.camera.target.z)
+    this.stylized?.update(
+      frameDt,
+      this.camera.target.x,
+      this.camera.target.y,
+      this.camera.target.z,
+    )
 
     this.scene?.render(alpha, frameDt)
-    this.composer.render(frameDt)
+    if (this.renderOverride) this.renderOverride(frameDt)
+    else this.composer.render(frameDt)
     this.input.endFrame()
   }
 
