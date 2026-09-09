@@ -381,6 +381,10 @@ export class ArenaScene implements GameScene {
     this.projectiles.onExplode = (x, y, z, radius, spec) => {
       this.vfx.spawnExplosion(x, y, z, radius, spec.element)
     }
+    // Vệt sau viên đạn — ProjectileSystem đã tự chặn nhịp nên gọi thẳng được
+    this.projectiles.onTrail = (x, y, z, vx, vz, spec) => {
+      this.vfx.spawnTrail(x, y, z, vx, vz, spec.element)
+    }
 
     // Vệt chém do VFX vẽ khi nghe sự kiện, nên hệ chiến đấu không biết VFX tồn tại
     ctx.bus.on('combat:swing', (e) => {

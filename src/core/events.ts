@@ -37,8 +37,23 @@ export type GameEvents = {
     radius: number
     side: 'player' | 'ally' | 'enemy'
   }
-  /** Một pháp thuật vừa được bấm (bắt đầu dẫn khí). */
-  'skill:cast': { id: string; slot: number; side: 'player' | 'ally' | 'enemy' }
+  /**
+   * Một pháp thuật vừa được bấm (bắt đầu dẫn khí).
+   *
+   * Có cả vị trí, ngũ hành và thời gian dẫn khí để VFX dựng được đoạn TỤ KHÍ —
+   * hạt bay vào tâm trong lúc đang niệm. Không có nó thì mọi pháp thuật đều bật
+   * ra đột ngột từ không khí và mất hết sức nặng.
+   */
+  'skill:cast': {
+    id: string
+    slot: number
+    side: 'player' | 'ally' | 'enemy'
+    x: number
+    y: number
+    z: number
+    element: string
+    castTime: number
+  }
   /** Pháp vực phát ra tại một điểm — VFX vẽ vòng sáng ở đây. */
   'skill:area': {
     x: number

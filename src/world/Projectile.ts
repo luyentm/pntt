@@ -67,9 +67,19 @@ interface Projectile {
   /** Id các combatant đã trúng — chống một viên trừ máu một mục tiêu nhiều lần. */
   hits: Set<number>
   hitsLeft: number
+  /**
+   * Đếm tới lần nhả vệt kế tiếp.
+   *
+   * Chặn nhịp Ở ĐÂY chứ không ở lớp VFX: lớp VFX nhận vệt qua một hook không có
+   * danh tính của từng viên, nên nó không thể biết hai lời gọi liền nhau là của
+   * một viên hay của hai viên khác nhau.
+   */
+  trailTimer: number
 }
 
 const GROUND_CLEARANCE = 0.55
+/** Giãn cách giữa hai lần nhả vệt của một viên, giây. */
+const TRAIL_INTERVAL = 0.035
 
 /**
  * Phi hành khí: phi kiếm, hoả cầu, phù lục.
@@ -132,6 +142,7 @@ export class ProjectileSystem {
         travelled: 0,
         hits: new Set(),
         hitsLeft: 0,
+        trailTimer: 0,
       })
     }
     this.hideAll()
@@ -171,6 +182,7 @@ export class ProjectileSystem {
     slot.spin = this.rng.float(0, Math.PI * 2)
     slot.returning = false
     slot.travelled = 0
+    slot.trailTimer = 0
     slot.hits.clear()
     slot.hitsLeft = Math.max(1, spec.pierce)
   }
@@ -195,6 +207,12 @@ export class ProjectileSystem {
 
       p.age += dt
       p.spin += dt * 14
+
+      p.trailTimer -= dt
+      if (p.trailTimer <= 0) {
+        p.trailTimer = TRAIL_INTERVAL
+        this.onTrail?.(p.x, p.y, p.z, p.vx, p.vz, spec)
+      }
 
       if (spec.behavior === 'truyKich') this.homeToward(p, dt)
       if (spec.behavior === 'hoiKiem') this.steerReturn(p, dt)
@@ -350,6 +368,16 @@ export class ProjectileSystem {
 
   /** Hook để VFX vẽ vụ nổ. Scene gán vào. */
   onExplode?: (x: number, y: number, z: number, radius: number, spec: ProjectileSpec) => void
+
+  /** Nhả vệt sau viên đạn. Đã được chặn nhịp, gọi được thẳng vào lớp hạt. */
+  onTrail?: (
+    x: number,
+    y: number,
+    z: number,
+    vx: number,
+    vz: number,
+    spec: ProjectileSpec,
+  ) => void
 
   private retire(p: Projectile): void {
     p.active = false

@@ -134,7 +134,16 @@ export class SkillCaster {
     this.pendingCursorX = ctx.cursorX
     this.pendingCursorZ = ctx.cursorZ
 
-    this.bus.emit('skill:cast', { id: def.id, slot, side: this.owner.side })
+    this.bus.emit('skill:cast', {
+      id: def.id,
+      slot,
+      side: this.owner.side,
+      x: this.owner.pos.x,
+      y: this.owner.y,
+      z: this.owner.pos.z,
+      element: def.element,
+      castTime: def.castTime,
+    })
     return { ok: true, cost: this.freeCast ? 0 : def.linhLucCost }
   }
 

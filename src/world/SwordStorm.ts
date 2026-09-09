@@ -35,6 +35,15 @@ const EXPAND = 0.55
 const HIT_INTERVAL = 0.3
 /** Lưỡi kiếm với ra ngoài vòng bay bấy nhiêu. */
 const BLADE_REACH = 0.7
+/**
+ * Giãn cách giữa hai lần phát sự kiện hình ảnh, giây.
+ *
+ * TÁCH khỏi nhịp gây sát thương (0,1 giây). Sát thương cần nhịp dày để cảm giác
+ * đàn kiếm đang quét liên tục, nhưng hình ảnh thì không: phát `skill:area` mười
+ * lần mỗi giây suốt 5 giây là 50 vụ nổ pháp vực chồng lên nhau, khoảng 1500 hạt
+ * và 50 vết cháy — vừa che kín màn hình vừa làm hồ vết đất đảo liên tục.
+ */
+const FX_INTERVAL = 0.6
 
 export interface SwordStormSpec {
   /** Bán kính vòng quét lớn nhất. */
@@ -87,6 +96,7 @@ export class SwordStorm {
   private readonly targets: Target[] = []
   private readonly buffer: Combatant[] = []
   private hitTimer = 0
+  private fxTimer = 0
 
   constructor(
     scene: Scene,
@@ -116,6 +126,7 @@ export class SwordStorm {
     this.active = true
     this.age = 0
     this.hitTimer = 0
+    this.fxTimer = 0
     this.owner = owner
     this.spec = spec
     this.targets.length = 0
@@ -158,19 +169,36 @@ export class SwordStorm {
 
     for (const t of this.targets) t.cooldown -= dt
 
+    // Hai đồng hồ riêng: sát thương quét dày (0,1 giây một lượt) để cảm giác
+    // đàn kiếm đang chém liên tục, còn hình ảnh thưa hơn nhiều. Đếm cả hai Ở
+    // ĐÂY vì đây là chỗ duy nhất có `dt` thật — trừ theo hằng số trong
+    // `strikeRing` sẽ sai đơn vị, vì hàm đó được gọi mỗi 0,1 giây chứ không mỗi
+    // `HIT_INTERVAL`.
+    this.fxTimer -= dt
     this.hitTimer -= dt
-    if (this.hitTimer <= 0) {
-      this.hitTimer = 0.1
-      this.strikeRing(owner)
-    }
+    if (this.hitTimer > 0) return
+    this.hitTimer = 0.1
+
+    const hits = this.strikeRing(owner)
+    if (hits === 0 || this.fxTimer > 0) return
+    this.fxTimer = FX_INTERVAL
+    this.bus.emit('skill:area', {
+      x: owner.pos.x,
+      y: owner.y,
+      z: owner.pos.z,
+      radius: this.currentRadius() + BLADE_REACH,
+      element: 'moc',
+      skillId: 'thanhTrucPhongVan',
+    })
   }
 
-  private strikeRing(owner: Combatant): void {
+  /** Quét một lượt. Trả về số mục tiêu THẬT SỰ bị trừ máu lượt này. */
+  private strikeRing(owner: Combatant): number {
     // Đoạn tụ kiếm là BÁO TRƯỚC, không gây sát thương: cộng với 0.6 giây dẫn
     // khí, địch có hơn một giây để chạy ra khỏi vòng. Chặn theo `age` chứ không
     // theo bán kính — bán kính lúc tụ đã là 0.9..1.3 nên lấy nó làm mốc thì con
     // quái đứng sát người vẫn ăn đòn ngay từ lúc kiếm chưa toả ra.
-    if (this.age < GATHER) return
+    if (this.age < GATHER) return 0
     const radius = this.currentRadius() + BLADE_REACH
 
     // PHẢI dùng isHostile: với người chơi thì 'ally' !== 'player' là true, nên
@@ -185,6 +213,7 @@ export class SwordStorm {
 
     const savedElement = owner.stats.element
     owner.stats.element = 'moc'
+    let struck = 0
     for (let i = 0; i < count; i++) {
       const victim = this.buffer[i] as Combatant
       const entry = this.targets.find((t) => t.combatant === victim)
@@ -194,6 +223,7 @@ export class SwordStorm {
       } else {
         this.targets.push({ combatant: victim, cooldown: HIT_INTERVAL })
       }
+      struck++
       // Bỏ miễn thương do đòn trước để nhịp quét của chiêu này quyết định,
       // không phải cửa sổ miễn thương của một đòn chém không liên quan
       victim.invuln = 0
@@ -203,15 +233,7 @@ export class SwordStorm {
       })
     }
     owner.stats.element = savedElement
-
-    this.bus.emit('skill:area', {
-      x: owner.pos.x,
-      y: owner.y,
-      z: owner.pos.z,
-      radius,
-      element: 'moc',
-      skillId: 'thanhTrucPhongVan',
-    })
+    return struck
   }
 
   /** Nhịp frame: chỉ xoay 33 ma trận, không có luật chơi ở đây. */

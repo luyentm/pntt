@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   Group,
@@ -83,12 +84,19 @@ export class AreaBurstLayer {
     const pillarGeo = pillarGeometry()
 
     this.pool = new VfxPool<Burst>(capacity, () => {
+      // Cộng sáng, không phủ mờ.
+      //
+      // Cùng một lỗi đã sửa ở BreakthroughFx: phủ mờ ở opacity 0,9 biến vòng và
+      // cột thành một tấm màu đặc che kín cả khung hình — thấy rõ nhất ở Thiên
+      // Lôi Phù, nơi cái cột vàng che mất chính tia sét. Cộng sáng thì nó là
+      // ánh sáng: nền vẫn xuyên qua và bloom bắt được thành quầng.
       const ringMat = new MeshBasicMaterial({
         color: Palette.linh,
         transparent: true,
         opacity: 0,
         depthWrite: false,
         toneMapped: false,
+        blending: AdditiveBlending,
       })
       const pillarMat = new MeshBasicMaterial({
         color: Palette.loi,
@@ -96,6 +104,7 @@ export class AreaBurstLayer {
         opacity: 0,
         depthWrite: false,
         toneMapped: false,
+        blending: AdditiveBlending,
       })
       const ring = new Mesh(ringGeo, ringMat)
       const pillar = new Mesh(pillarGeo, pillarMat)
@@ -132,14 +141,14 @@ export class AreaBurstLayer {
     b.ring.position.set(x, y + 0.06, z)
     b.ring.scale.set(radius * 0.3, 1, radius * 0.3)
     b.ring.visible = true
-    b.ringMat.opacity = 0.95
+    b.ringMat.opacity = 0.6
 
     if (b.withPillar) {
       const height = options.pillarHeight ?? radius * 3.4
       b.pillar.position.set(x, y, z)
       b.pillar.scale.set(radius * 0.5, height, radius * 0.5)
       b.pillar.visible = true
-      b.pillarMat.opacity = 0.9
+      b.pillarMat.opacity = 0.35
     } else {
       b.pillar.visible = false
       b.pillarMat.opacity = 0
@@ -154,14 +163,14 @@ export class AreaBurstLayer {
         const eased = 1 - (1 - progress) ** 2.2
         const s = b.radius * (0.3 + eased * 0.85)
         b.ring.scale.set(s, 1, s)
-        b.ringMat.opacity = 0.95 * (1 - progress) ** 1.5
+        b.ringMat.opacity = 0.6 * (1 - progress) ** 1.5
 
         if (b.withPillar) {
           // Cột co lại theo chiều ngang và mờ dần: đọc ra là năng lượng tan đi
           const shrink = 1 - progress * 0.55
           b.pillar.scale.x = b.radius * 0.5 * shrink
           b.pillar.scale.z = b.radius * 0.5 * shrink
-          b.pillarMat.opacity = 0.9 * (1 - progress) ** 1.1
+          b.pillarMat.opacity = 0.35 * (1 - progress) ** 1.1
         }
       },
       (b) => {

@@ -223,6 +223,57 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
 
+### Hệ hạt
+
+Hiệu ứng ban đầu chỉ có mảnh vỡ + vệt chém + vòng loang, nên bảy chiêu khác nhau nhìn
+ra gần như một chiêu bảy màu. Thêm một lớp hạt dùng chung và ba lớp phụ.
+
+- **Vẫn tự viết, không dùng thư viện particle.** Thư viện sinh ra sprite mờ, còn cả
+  game này là lowpoly có mặt cắt — hạt cũng phải là khối có facet mới cùng chất. Đây là
+  quyết định từ đầu project và vẫn đúng.
+- **Ba dáng hạt, mỗi dáng một `InstancedMesh`** → cả lớp hạt tốn đúng 3 draw call.
+  `shard` (tứ diện, mảnh vỡ) · `spark` (hộp thuôn, **xoay theo vận tốc** và dài ra theo
+  tốc độ — chính việc đó làm nó đọc ra là tốc độ, một khối vuông bay nhanh vẫn chỉ là
+  khối vuông) · `mote` (bát diện nhỏ, đốm linh khí).
+- **Dùng mảng typed, không mảng object**: ba dáng × 256 hạt × 15 trường. Mảng typed vừa
+  gọn hơn vừa không tạo 768 object cho GC phải theo dõi.
+- **Mỗi ngũ hành một CHẤT, không chỉ một màu.** Hoả: tro nóng bay lên, trọng lực âm, cản
+  cao. Thuỷ: mảnh băng rơi, trọng lực mạnh, không cản. Kim: tia lửa bắn thẳng và tắt sớm.
+  Mộc: đốm lơ lửng, cản rất cao. Chỉ đổi màu thì bảy chiêu vẫn là một chiêu bảy màu.
+- **Dáng `implode` là phần quan trọng nhất**: hạt sinh trên vỏ cầu rồi bay VÀO tâm trong
+  lúc đang niệm chú. Nó làm chiêu có cảm giác được DỰNG LÊN thay vì bật ra từ không khí —
+  và nó cũng là lời báo trước cho đối thủ, nên vừa đẹp vừa công bằng. `skill:cast` được
+  mở rộng thêm vị trí, ngũ hành và thời gian dẫn khí để dựng được đoạn này.
+- **Tia sét thật cho Thiên Lôi Phù** (`LightningBolt`): đường gấp khúc dựng LẠI mỗi lần
+  giáng, cộng ba nhánh con. Dùng lại đúng một hình thì lần thứ hai người chơi nhận ra
+  ngay và nó thành một cái sticker. Chi phí là ghi lại một `Float32Array` cấp phát sẵn.
+- **Vết còn lại trên đất** (`GroundMarks`): vệt cháy, mảng băng, nằm 2–3 giây. Một chiêu
+  diện rộng mà không để lại gì thì nó chỉ là một tia sáng loé qua — người chơi không có
+  bằng chứng nào rằng chỗ đó vừa bị đánh.
+- **Vệt sau phi hành khí**, chặn nhịp 0,035 giây. Chặn nhịp Ở TRONG `ProjectileSystem`
+  chứ không ở lớp VFX: lớp VFX nhận vệt qua một hook không có danh tính của từng viên,
+  nên nó không thể biết hai lời gọi liền nhau là của một viên hay hai viên.
+
+Bốn chỗ phải sửa khi nối vào:
+
+- **`AreaBurst` đang phủ mờ ở opacity 0,9**, nên cái cột của Thiên Lôi Phù là một tấm
+  vàng đặc che kín một phần ba khung hình — và che mất chính tia sét vừa dựng. Đổi sang
+  cộng sáng (cùng lỗi đã sửa ở `BreakthroughFx`), và bỏ hẳn cột cho Thiên Lôi Phù vì giờ
+  đã có tia sét thật.
+- **Đàn kiếm trúc phát `skill:area` mười lần mỗi giây** suốt 5 giây. Với lớp hạt mới đó
+  là ~1500 hạt và 50 vết cháy chồng lên nhau. Tách hẳn hai đồng hồ: sát thương giữ nhịp
+  dày 0,1 giây, hình ảnh 0,6 giây — và đếm cả hai ở chỗ có `dt` thật, vì trừ theo hằng
+  số trong `strikeRing` sẽ sai đơn vị (hàm đó được gọi mỗi 0,1 giây, không mỗi
+  `HIT_INTERVAL`).
+- `emit()` phải ghi **ma trận đầu tiên** ngay, không chờ `update()`: nếu chờ thì hạt vừa
+  sinh còn giữ ma trận cũ (đã bị đẩy xuống y = −999 lúc tắt) trong đúng một khung.
+- Hạt cũng phải **xác định theo seed** — một lời gọi `Math.random()` lẻ trong lớp hạt là
+  đủ phá vỡ tính chất mà cả game được thiết kế quanh. Có test đối chiếu hai lần chạy
+  cùng seed.
+
+Đo ở đỉnh tải: **768 hạt (đầy hồ) + 55 nhân vật + đàn kiếm = 1,23 ms/khung** trên ngân
+sách 16,7 ms, 149 draw call.
+
 ### Chế độ trình diễn thần thông
 
 Chọn từ menu chính (*Xem thần thông*). Mở hết cảnh giới Kết Đan nên cả 7 pháp thuật,
