@@ -81,6 +81,11 @@ export type GameEvents = {
   /** Bay lên / hạ xuống. */
   'flight:toggle': { active: boolean }
 
+  /** Người chơi bấm Esc mà không có bảng nào đang mở — main mở menu tạm dừng. */
+  'game:pauseRequest': Record<string, never>
+  /** Vừa lưu (hoặc lưu thất bại). */
+  'game:saved': { ok: boolean }
+
   /** Sinh lực người chơi đổi — HUD nghe. */
   'player:vitals': { sinhLuc: number; maxSinhLuc: number; linhLuc: number; maxLinhLuc: number }
 }

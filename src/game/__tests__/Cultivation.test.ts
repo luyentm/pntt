@@ -286,4 +286,53 @@ describe('lưu và nạp', () => {
     expect(restored.failStreak).toBe(2)
     expect(restored.linhNhu).toBeCloseTo(c.linhNhu)
   })
+
+  describe('toạ thiền và bình cảnh', () => {
+    /** Số giây toạ thiền suông để đi từ tầng `from` sang tầng sau. */
+    function secondsForTier(tier: number): number {
+      const c = new Cultivation({ major: REALM.LUYEN_KHI, tier })
+      let seconds = 0
+      while (c.realm.tier === tier && seconds < 100000) {
+        c.meditate(1)
+        seconds++
+      }
+      return seconds
+    }
+
+    it('ba tầng bình cảnh cuối Luyện Khí toạ thiền LÂU hơn hẳn tầng đầu', () => {
+      // Đây là một lỗi thiết kế đã có thật: lượng hồi từng tính theo PHẦN TRĂM
+      // mốc của tầng, nên mốc bị chia lại đúng bằng lượng hồi và mọi tầng đều
+      // mất đúng 36 giây — kể cả ba tầng cố tình đắt gấp 2,7 lần. Cả cơ chế
+      // bình cảnh bị vô hiệu, và toạ thiền suông đi hết Luyện Khí trong 7 phút,
+      // nhanh hơn đánh quái 5 lần.
+      const early = secondsForTier(0)
+      const bottleneck = secondsForTier(10)
+      expect(bottleneck).toBeGreaterThan(early * 5)
+    })
+
+    it('toạ thiền nhanh hơn ở cảnh giới cao — nhưng không bù nổi mốc lớn hơn', () => {
+      const luyenKhi = new Cultivation({ major: REALM.LUYEN_KHI, tier: 0 })
+      const trucCo = new Cultivation({ major: REALM.TRUC_CO, tier: 0 })
+      expect(trucCo.meditateRate).toBeGreaterThan(luyenKhi.meditateRate)
+    })
+
+    it('toạ thiền suông đi hết Luyện Khí phải mất hơn 15 phút', () => {
+      // Nếu nhanh hơn thế thì đường chơi tối ưu là ngồi giữ F trong góc, và cả
+      // vòng lặp đánh quái → rơi vật phẩm → luyện đan mất ý nghĩa
+      const c = new Cultivation({ major: REALM.LUYEN_KHI, tier: 0 })
+      let seconds = 0
+      while (!c.atCap && seconds < 100000) {
+        c.meditate(1)
+        seconds++
+      }
+      expect(seconds).toBeGreaterThan(15 * 60)
+    })
+
+    it('một bình Tiểu Bình đầy cho dưới một nửa mốc của tầng', () => {
+      const c = new Cultivation({ major: REALM.LUYEN_KHI, tier: 5 })
+      const needed = c.tuViNeeded
+      c.linhNhu = 100
+      expect(c.drinkLinhNhu()).toBeLessThan(needed * 0.5)
+    })
+  })
 })

@@ -1,11 +1,12 @@
 import { Mesh, Vector3, type BufferGeometry, type Object3D } from 'three'
 import { canCraft, craft } from '@/game/Alchemy'
+import { clearSave, saveGame, type SaveData, type SaveStorage } from '@/game/SaveGame'
 import { WaveDirector, type WaveActions } from '@/game/WaveDirector'
 import { BreakthroughTrial, type TrialOutcome } from '@/game/BreakthroughTrial'
 import { unitDef, type BossPhase } from '@/game/data/units'
 import { rollDrops, tuViReward } from '@/game/data/dropTables'
 import { itemDef } from '@/game/data/items'
-import { majorRealm } from '@/game/data/realms'
+import { REALM, majorRealm } from '@/game/data/realms'
 import { recipeById } from '@/game/data/recipes'
 import { BossBar } from '@/ui/BossBar'
 import { Hud } from '@/ui/Hud'
@@ -39,6 +40,7 @@ import {
 import { materials } from '@/render/Materials'
 import { CollisionWorld, type StaticBody } from './Collision'
 import { Player } from './Player'
+import { START_REALM } from '@/game/data/player'
 import { Terrain } from './Terrain'
 import type { GameScene, SceneContext, SceneDebugActions } from './Scene'
 
@@ -54,6 +56,27 @@ const GATE_DISTANCE = 15
  * kẹt sâu mà CollisionWorld.resolve() không giải hết trong một frame.
  */
 const MIN_PASSAGE = 0.8
+
+/**
+ * Giãn cách tự lưu, giây.
+ *
+ * Có tự lưu theo thời gian BÊN CẠNH lưu theo mốc quan trọng (lên tầng, đột phá,
+ * dẹp xong đợt): nếu chỉ lưu theo mốc thì một người chơi cày Tu Vi mười phút mà
+ * chưa lên tầng nào, đóng tab là mất trắng cả mười phút đó.
+ */
+const AUTO_SAVE_SECONDS = 25
+
+/** Số quái nền muốn giữ quanh rừng. */
+const AMBIENT_TARGET = 10
+/**
+ * Giãn cách hồi sinh quái nền, giây.
+ *
+ * Có hồi sinh vì nếu không thì sau khi dọn 10 con đầu là hết hẳn thứ để cày
+ * giữa hai đợt — mà "chuẩn bị giữa hai đợt" chính là chỗ vòng lặp tu luyện của
+ * M5 sống. Nhưng CHỈ hồi sinh khi không có đợt nào đang chạy: thêm quái vào
+ * giữa một đợt vừa làm loãng độ khó vừa làm điều kiện dẹp xong khó đọc.
+ */
+const AMBIENT_RESPAWN = 7
 
 /** Sơn môn Thất Huyền Môn: cổng phái, luyện võ trường, đài luyện đan, rừng tùng và bụi tre. */
 export class ArenaScene implements GameScene {
@@ -71,6 +94,10 @@ export class ArenaScene implements GameScene {
   swords!: SwordStorm
   /** Bộ điều phối "Thất Huyền Môn thủ trận". */
   readonly director = new WaveDirector()
+  /** Tổng thời gian đã chơi của lượt này, giây. */
+  playTime = 0
+  /** Chỗ lưu. main gán localStorage vào; test gán bản giả. */
+  storage: SaveStorage | null = null
 
   private ctx!: SceneContext
   private readonly objects: Object3D[] = []
@@ -104,6 +131,9 @@ export class ArenaScene implements GameScene {
    */
   private readonly rewarded = new Set<number>()
 
+  /** Còn bấy nhiêu giây nữa thì tự lưu. */
+  private autoSaveTimer = AUTO_SAVE_SECONDS
+  private ambientTimer = AMBIENT_RESPAWN
   private crowd!: Crowd
   private bossBar!: BossBar
   private banner!: WaveBanner
@@ -317,6 +347,11 @@ export class ArenaScene implements GameScene {
         e.radius,
         e.side === 'player' ? Palette.linh : Palette.maHuyet,
       )
+    })
+    // Lưu ngay ở các mốc đáng lưu, không đợi hết chu kỳ tự lưu
+    ctx.bus.on('cultivation:breakthrough', () => this.save(this.nowMs()))
+    ctx.bus.on('cultivation:tierUp', () => {
+      this.autoSaveTimer = Math.min(this.autoSaveTimer, 2)
     })
     ctx.bus.on('flight:toggle', ({ active }) => {
       ctx.bus.emit('toast', {
@@ -583,6 +618,58 @@ export class ArenaScene implements GameScene {
     )
   }
 
+  /** Bù dần quái nền về mức mục tiêu, chỉ khi không có đợt nào đang chạy. */
+  private updateAmbient(dt: number): void {
+    if (this.director.state === 'fighting' || this.director.state === 'announcing') return
+    this.ambientTimer -= dt
+    if (this.ambientTimer > 0) return
+    this.ambientTimer = AMBIENT_RESPAWN
+
+    let ambient = 0
+    for (const agent of this.agents) {
+      if (!agent.waveTag && agent.combatant.side === 'enemy' && !agent.combatant.dead) ambient++
+    }
+    if (ambient >= AMBIENT_TARGET) return
+
+    // Sinh ở vòng xa và theo cảnh giới người chơi: ở Trúc Cơ thì yêu thử chỉ còn
+    // là một nhát chém, nên quái nền phải lên theo, không thì cày thành vô nghĩa
+    const rng = this.ctx.rng
+    const major = this.player.cultivation.realm.major
+    const pool = major >= REALM.KET_DAN
+      ? ['thietGiapThi', 'maDaoTanTu', 'hacLang']
+      : major >= REALM.TRUC_CO
+        ? ['hacLang', 'docThu', 'maDaoTanTu']
+        : ['yeuThu', 'yeuThu', 'hacLang', 'docThu']
+    const p = rng.inAnnulus(20, 34)
+    this.spawnAgent(rng.pick(pool), p.x, p.z, rng)
+  }
+
+  /**
+   * Tự lưu theo thời gian.
+   *
+   * KHÔNG lưu trong lúc đang đánh dở một đợt hoặc đang đột phá: ghi vào giữa
+   * một trạng thái tạm sẽ tạo ra bản lưu mà mở lại thì người chơi đứng giữa
+   * đợt 4 với sân trống, hoặc đang nhập định mà màn thử đã mất.
+   */
+  private updateAutoSave(dt: number): void {
+    this.autoSaveTimer -= dt
+    if (this.autoSaveTimer > 0) return
+    if (this.trial.active || this.director.state === 'fighting' || this.director.state === 'announcing') {
+      // Chưa tới lúc yên — thử lại sau vài giây thay vì bỏ hẳn lượt lưu này
+      this.autoSaveTimer = 4
+      return
+    }
+    this.save(this.nowMs())
+  }
+
+  /**
+   * Mốc thời gian thật, ms. Chỉ dùng cho dấu thời gian của bản lưu — không bao
+   * giờ dùng trong mô phỏng, nơi mọi thứ phải xác định theo seed.
+   */
+  private nowMs(): number {
+    return typeof performance !== 'undefined' ? Date.now() : 0
+  }
+
   /** Đọc phím mở bảng và các lệnh tu luyện. */
   private updateCultivationInput(): void {
     const { input } = this.ctx
@@ -592,7 +679,14 @@ export class ArenaScene implements GameScene {
     if (input.wasPressed('KeyC')) this.togglePanel(this.culPanel)
     if (input.wasPressed('KeyI')) this.togglePanel(this.invPanel)
     if (input.wasPressed('KeyK')) this.togglePanel(this.alcPanel)
-    if (input.wasPressed('Escape')) this.closePanels()
+    if (input.wasPressed('Escape')) {
+      // Esc là "lùi một bước": có bảng đang mở thì đóng bảng, không thì mở menu
+      // tạm dừng. Nếu Esc luôn mở menu thì người chơi đang xem túi đồ phải bấm
+      // hai lần mới quay lại được trận.
+      const anyOpen = this.panels.some((panel) => panel.isOpen)
+      if (anyOpen) this.closePanels()
+      else this.ctx.bus.emit('game:pauseRequest', {})
+    }
     if (input.wasPressed('KeyG')) this.drinkLinhNhu()
     if (input.wasPressed('KeyB')) this.startTrial()
   }
@@ -607,6 +701,82 @@ export class ArenaScene implements GameScene {
       const p = rng.inAnnulus(22, 34)
       this.spawnAgent('hacLang', p.x, p.z, rng)
     }
+  }
+
+  /** Gói trạng thái cần lưu. */
+  captureSave(): Omit<SaveData, 'version' | 'savedAt'> {
+    return {
+      cultivation: this.player.cultivation.toJSON(),
+      inventory: this.player.inventory.toJSON(),
+      wave: {
+        index: this.director.index,
+        cleared: this.director.cleared,
+        deaths: this.director.deaths,
+      },
+      playTime: this.playTime,
+    }
+  }
+
+  /** Ghi ngay. Trả về false nếu không lưu được (localStorage bị chặn). */
+  save(now: number): boolean {
+    this.autoSaveTimer = AUTO_SAVE_SECONDS
+    if (!this.storage) return false
+    const ok = saveGame(this.storage, this.captureSave(), now)
+    this.ctx.bus.emit('game:saved', { ok })
+    return ok
+  }
+
+  /**
+   * Nạp một bản lưu vào màn đang chạy.
+   *
+   * KHÔNG dựng lại màn: quái, prop và địa hình đều sinh từ seed cố định nên
+   * chúng đã đúng rồi. Chỉ có tiến độ của người chơi là thứ cần thay.
+   */
+  applySave(data: SaveData): void {
+    this.player.cultivation.loadFrom(data.cultivation)
+    this.player.inventory.clear()
+    for (const [id, count] of Object.entries(data.inventory)) {
+      // Bỏ qua id không còn tồn tại thay vì làm sập cả lượt nạp
+      try {
+        this.player.inventory.add(id, count)
+      } catch {
+        continue
+      }
+    }
+    // PHẢI tính lại stat ngay: sinh lực tối đa vừa đổi theo cảnh giới của bản lưu
+    this.player.refreshStats()
+    this.player.combatant.hp = this.player.combatant.stats.maxSinhLuc
+    this.player.linhLuc = this.player.combatant.stats.maxLinhLuc
+
+    this.director.reset()
+    this.director.index = Math.min(this.director.total - 1, data.wave.index)
+    this.director.cleared = data.wave.cleared
+    this.director.deaths = data.wave.deaths
+    this.playTime = data.playTime
+    this.autoSaveTimer = AUTO_SAVE_SECONDS
+    this.hud.setRealm(this.player.realm)
+  }
+
+  /** Bắt đầu lượt mới: xoá bản lưu và đưa tiến độ về mốc ban đầu. */
+  resetProgress(): void {
+    if (this.storage) clearSave(this.storage)
+    this.player.cultivation.loadFrom({
+      major: START_REALM.major,
+      tier: START_REALM.tier,
+      tuVi: 0,
+      failStreak: 0,
+      linhNhu: 0,
+      totalTuVi: 0,
+    })
+    this.player.inventory.clear()
+    this.player.refreshStats()
+    this.player.combatant.hp = this.player.combatant.stats.maxSinhLuc
+    this.player.linhLuc = this.player.combatant.stats.maxLinhLuc
+    this.director.reset()
+    this.playTime = 0
+    this.waveActions.clearEnemies()
+    this.player.revive(0, GATE_DISTANCE - 5, Math.PI)
+    this.hud.setRealm(this.player.realm)
   }
 
   /** Bật/tắt thanh máu tướng. `null` = hết đợt tướng. */
@@ -832,9 +1002,12 @@ export class ArenaScene implements GameScene {
     // đặc biệt trong đường gây sát thương
     if (this.godMode) this.player.combatant.invuln = 1
 
+    this.playTime += dt
     this.updateCultivationInput()
     this.updateTrial(dt)
     this.updateWaves(dt, input)
+    this.updateAmbient(dt)
+    this.updateAutoSave(dt)
 
     this.player.fixedUpdate(
       dt,

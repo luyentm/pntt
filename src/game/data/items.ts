@@ -45,7 +45,7 @@ export const ITEMS: Record<string, ItemDef> = {
     desc: 'Đơn vị tiền tệ của giới tu tiên. Hấp thu trực tiếp cũng tăng được Tu Vi.',
     color: Palette.linh,
     tier: 1,
-    use: { type: 'tuVi', amount: 12 },
+    use: { type: 'tuVi', amount: 30 },
     stack: 9999,
   },
 
@@ -99,7 +99,7 @@ export const ITEMS: Record<string, ItemDef> = {
     desc: 'Nội đan của yêu thú. Vừa luyện đan được, vừa hấp thu tăng Tu Vi.',
     color: Palette.doc,
     tier: 2,
-    use: { type: 'tuVi', amount: 30 },
+    use: { type: 'tuVi', amount: 90 },
     stack: 99,
   },
 
@@ -131,7 +131,10 @@ export const ITEMS: Record<string, ItemDef> = {
     desc: 'Tăng Tu Vi trực tiếp. Cách nhanh nhất để qua bình cảnh Luyện Khí.',
     color: Palette.linhDam,
     tier: 2,
-    use: { type: 'tuVi', amount: 180 },
+    // 900 chứ không 180: ba tầng bình cảnh cuối Luyện Khí cần 1962/2787/3957 Tu
+    // Vi, nên ở 180 thì phải hơn hai chục viên cho MỘT tầng — và đan dược không
+    // còn là câu trả lời cho bình cảnh, chỉ là một thứ nhặt được rồi quên.
+    use: { type: 'tuVi', amount: 900 },
     stack: 20,
   },
   trucCoDan: {

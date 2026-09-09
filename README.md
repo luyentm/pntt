@@ -36,6 +36,7 @@ Mở http://localhost:5173
 | `Space` | Ngự Kiếm Phi Hành — bật/tắt, mở ở Trúc Cơ |
 | `C` / `I` / `K` | Bảng Tu Luyện / Túi Đồ / Luyện Đan (`Esc` đóng) |
 | `Enter` | Khởi trận — mở đợt kế tiếp của "Thất Huyền Môn thủ trận" |
+| `Esc` | Đóng bảng đang mở; không có bảng nào thì mở menu tạm dừng |
 
 Trong màn thử dẫn khí: bấm `Space` mỗi khi con trỏ đi vào vùng sáng.
 
@@ -45,8 +46,9 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
 
 - **Không có asset ngoài nào.** Không texture, không `.glb`, không file âm thanh.
   Model chibi và prop được **sinh bằng code** từ khối cơ bản + vertex color;
-  animation là rig `Group` lồng nhau (không xương); âm thanh sinh bằng WebAudio.
-  Bundle ~211 KB gz, load tức thì, chạy offline.
+  animation là keyframe biên dịch sang `Float32Array`; âm thanh sinh bằng WebAudio
+  (oscillator + bồi âm phi điều hoà, nhiễu trắng từ bộ sinh số tự viết).
+  Bundle ~218 KB gz, load tức thì, chạy offline.
 - **Vòng lặp fixed-timestep 60Hz + nội suy** (`core/Loop.ts`) — combat và AI xác định,
   không phụ thuộc fps. Số lần **vẽ** khoá ở 60 fps mặc định (`loop.fpsCap`), đổi được
   trong bảng debug → *Hình ảnh → Giới hạn fps*.
@@ -184,6 +186,75 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
 
+### M8 — lưu, menu, âm thanh, cân bằng
+
+- **Một bản lưu hỏng không bao giờ được làm sập game.** Mọi đường đọc trả về
+  `null` khi có gì không đúng, và mọi giá trị đều kiểm kiểu LÚC CHẠY thay vì tin
+  vào `as SaveData` — dữ liệu trong localStorage là dữ liệu ngoài: có thể do một
+  phiên bản khác ghi, do người chơi sửa tay, hoặc bị cắt giữa lúc ghi.
+- Bản lưu của phiên bản **mới hơn thì từ chối**, không đoán. Đoán ra một trạng
+  thái nửa vời còn tệ hơn bắt đầu lại, vì người chơi sẽ tưởng save còn nguyên rồi
+  mới phát hiện mất đồ. Bản CŨ hơn thì migrate (thiếu `wave` = chưa đánh đợt nào).
+- `localStorage` **ném lỗi ngay khi chạm vào** ở chế độ riêng tư của một số trình
+  duyệt. Cả `SaveStorage` được bọc lại để không bao giờ ném: không lưu được là mất
+  tiến độ, còn ném lỗi ở đây là không vào được game.
+- Cài đặt lưu **tách khỏi bản lưu**: nó phải sống sót qua cả "bắt đầu lượt mới".
+  Nhét chung thì mỗi lần chơi lại từ đầu người chơi lại phải tắt đổ bóng một lần
+  nữa — mà đó thường chính là lý do họ vào cài đặt ngay từ đầu.
+- Giá trị cài đặt đọc vào bị **KẸP LẠI**, không chỉ kiểm kiểu: một
+  `resolutionScale: 40` sẽ cấp phát một framebuffer khổng lồ và treo máy trước khi
+  kịp hiện gì.
+- Tự lưu theo **thời gian** bên cạnh theo **mốc** (lên tầng, đột phá). Chỉ theo
+  mốc thì người cày Tu Vi mười phút mà chưa lên tầng nào, đóng tab là mất trắng.
+  Và **không** lưu giữa lúc đang đánh dở một đợt hay đang đột phá — bản lưu đó mở
+  lại sẽ để người chơi đứng giữa đợt 4 với sân trống.
+- `Cultivation.loadFrom` mutate CHÍNH đối tượng cũ chứ không tạo instance mới:
+  `Combatant.realm` trỏ vào cùng object đó, nên thay bằng instance mới sẽ để
+  combatant giữ tham chiếu cũ và nhân vật đánh bằng cảnh giới của bản lưu trước.
+- `Esc` là "lùi một bước": có bảng đang mở thì đóng bảng, không thì mở menu tạm
+  dừng. Nếu `Esc` luôn mở menu thì người đang xem túi đồ phải bấm hai lần mới về
+  được trận.
+- Menu **làm mờ nền, không che hẳn**: thế giới vẫn được vẽ phía sau (game chỉ tạm
+  dừng mô phỏng, không dừng render). Một màn hình đen ở menu chính sẽ che mất thứ
+  duy nhất bán được trò chơi này — chính cái sơn môn.
+- Âm thanh **sinh bằng WebAudio, không một file audio nào**. Nhiễu trắng sinh bằng
+  bộ sinh số tuyến tính tự viết, không `Math.random()`.
+- `AudioContext` phải dựng **từ trong một cử chỉ của người dùng** (lần bấm vào
+  menu). Dựng sớm hơn thì nó nằm ở `suspended` mãi — âm thanh "không lỗi gì" mà
+  cũng chẳng bao giờ nghe được.
+- Bộ **chặn nhịp âm thanh** là bắt buộc: một phát Thiên Lôi Phù trúng 12 con phát
+  12 sự kiện `combat:hit` trong đúng một frame, và 12 tiếng gõ cộng biên độ thành
+  một tiếng "bục" méo, to hơn mọi thứ khác trong game.
+- Trần giọng là **40, không phải 20**. Thử 20 thì riêng tiếng đột phá đã tốn 9
+  giọng (hợp âm rải 4 nốt + khánh 4 bồi âm + một hơi nhiễu), nên đang đánh nhau mà
+  đột phá thì tiếng quan trọng nhất của cả bản demo bị cắt mất.
+- Tiếng kim khí làm bằng **bồi âm phi điều hoà tắt lệch nhau**. Một sine đơn nghe
+  ra là tiếng máy đo; chồng bồi âm rồi cho tắt lệch thì tai đọc ra là "một vật
+  bằng đồng vừa bị gõ".
+- Tiếng **bị đánh** phải đục và thấp, khác hẳn tiếng mình **đánh trúng** — trong
+  một trận đông người thì đó là thông tin quan trọng nhất, và mắt đang không rảnh.
+
+#### Cân bằng: ba con số đo được, không phải cảm giác
+
+- **Lỗi thật: 6 đơn vị của M7 không có bảng rơi nào.** Không lỗi nào được ném ra —
+  `tuViReward` chỉ trả về 0 — nên hạ Thiết Giáp Thi, ma đạo tán tu và cả Mặc Đại
+  Phu đều được **0 Tu Vi và 0 vật phẩm**: cả nửa sau của game không trả thưởng gì.
+  Giờ có test đối chiếu bảng rơi với bảng đơn vị.
+- **Lỗi thiết kế: toạ thiền vô hiệu hoá bình cảnh.** Lượng hồi từng tính theo phần
+  trăm mốc của tầng (`0.028 × mốc`), nên mốc bị chia lại đúng bằng lượng hồi và
+  MỌI tầng đều mất đúng 36 giây — kể cả ba tầng cuối Luyện Khí cố tình đắt gấp 2,7
+  lần. Toạ thiền suông đi hết Luyện Khí trong **7 phút**, nhanh hơn đánh quái 5
+  lần, và đường chơi tối ưu thành ra là ngồi giữ `F` trong góc. Đổi sang lượng
+  tuyệt đối theo cảnh giới → **26 phút**, và bình cảnh cắn thật.
+- Tiểu Bình từng cho gần trọn một tầng mỗi 3 phút (229/254 Tu Vi) → cả Luyện Khí
+  đi được bằng cách để game chạy không. Hạ xuống **89 Tu Vi/bình** (35% mốc tầng).
+- Tụ Khí Đan 180 → **900 Tu Vi**: ba tầng bình cảnh cần 1962/2787/3957, nên ở 180
+  thì phải hơn hai chục viên cho MỘT tầng, và đan dược không còn là câu trả lời cho
+  bình cảnh mà chỉ là thứ nhặt được rồi quên.
+- Thêm **hồi sinh quái nền** (1 con/7 giây, giữ 10 con, thang theo cảnh giới người
+  chơi). Không có nó thì sau khi dọn 10 con đầu là hết hẳn thứ để cày giữa hai đợt
+  — mà "chuẩn bị giữa hai đợt" chính là chỗ vòng lặp tu luyện của M5 sống.
+
 ### M7 — tướng và đại chiến
 
 - **Đợt sau KHÔNG tự chạy tiếp — phải người chơi bấm `Enter`.** Giữa hai đợt là lúc
@@ -307,4 +378,6 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - [x] **M7** Tướng & đại chiến — bộ điều phối 6 đợt, đệ tử đồng môn AI, lớp quân hậu cảnh
       instanced, Ma Đạo Trúc Cơ (bài học chênh cảnh giới), Mặc Đại Phu 3 phase, thanh máu
       tướng, thắng/thua
-- [ ] **M8** Hoàn thiện
+- [x] **M8** Hoàn thiện — lưu localStorage + migration, menu chính, tạm dừng, cài đặt
+      (phân giải · đổ bóng · hậu xử lý · giới hạn fps · âm lượng), SFX procedural bằng
+      WebAudio, pass cân bằng

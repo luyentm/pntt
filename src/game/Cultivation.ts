@@ -4,6 +4,7 @@ import {
   MAJOR_REALMS,
   REALM,
   realmName,
+  realmPower,
   tierCount,
   tuViForNextTier,
   type RealmPosition,
@@ -23,14 +24,32 @@ const PITY_PER_FAIL = 0.18
 /** Thất bại thì mất bấy nhiêu phần Tu Vi. */
 const FAIL_TUVI_LOSS = 0.3
 
-/** Tu Vi hồi mỗi giây khi toạ thiền, tính theo phần trăm mốc cần cho tầng. */
-const MEDITATE_RATE = 0.028
+/**
+ * Tu Vi hồi mỗi giây khi toạ thiền, tính theo hệ số sức mạnh cảnh giới.
+ *
+ * TRƯỚC ĐÂY tính theo phần trăm mốc của tầng (0.028 × mốc), và đó là một lỗi
+ * thiết kế: mốc bị chia lại đúng bằng lượng hồi, nên MỌI tầng đều mất đúng 36
+ * giây — kể cả ba tầng bình cảnh cuối Luyện Khí, thứ cố tình đắt gấp 2,7 lần để
+ * ép người chơi đi tìm đan dược. Cả cơ chế bình cảnh bị vô hiệu, và toạ thiền
+ * suông đi hết Luyện Khí trong 7 phút, nhanh hơn đánh quái 5 lần. Đường chơi
+ * tối ưu thành ra là ngồi giữ F trong góc.
+ *
+ * Nay là lượng TUYỆT ĐỐI theo cảnh giới: vẫn có ích ở mọi cảnh giới, nhưng mốc
+ * càng lớn thì càng chậm — nên bình cảnh cắn thật.
+ */
+const MEDITATE_PER_POWER = 1.25
 /** Tiểu Bình tích linh nhũ mỗi giây. */
 const LINH_NHU_RATE = 0.55
 /** Dung tích Tiểu Bình. */
 const LINH_NHU_CAP = 100
-/** Một giọt linh nhũ đổi được bấy nhiêu Tu Vi (nhân theo mốc của tầng). */
-const LINH_NHU_TUVI = 0.9
+/**
+ * Một bình linh nhũ đầy đổi được bấy nhiêu phần mốc của tầng.
+ *
+ * 0.35 chứ không 0.9: ở 0.9 thì mỗi 3 phút Tiểu Bình cho gần trọn một tầng, và
+ * cả 13 tầng Luyện Khí đi được bằng cách để game chạy không. Tiểu Bình trong
+ * truyện là một ưu thế đều đặn, không phải con đường chính.
+ */
+const LINH_NHU_TUVI = 0.35
 
 export type BreakthroughBlock =
   | 'chuaDuTuVi'
@@ -127,11 +146,15 @@ export class Cultivation {
     return { tiersGained: gained, atCap: this.atCap }
   }
 
+  /** Tu Vi thu được mỗi giây khi toạ thiền, ở cảnh giới hiện tại. */
+  get meditateRate(): number {
+    return MEDITATE_PER_POWER * realmPower(this.realm)
+  }
+
   /** Toạ thiền: tăng Tu Vi chậm và đều. Gọi mỗi bước fixed khi đang thiền. */
   meditate(dt: number): TierUpResult {
     if (this.atCap) return { tiersGained: 0, atCap: true }
-    const needed = this.tuViNeeded
-    return this.gainTuVi(needed * MEDITATE_RATE * dt)
+    return this.gainTuVi(this.meditateRate * dt)
   }
 
   /** Tiểu Bình tự tích linh nhũ theo thời gian, kể cả khi đang đánh nhau. */
@@ -239,6 +262,23 @@ export class Cultivation {
       linhNhu: this.linhNhu,
       totalTuVi: this.totalTuVi,
     }
+  }
+
+  /**
+   * Nạp trạng thái vào CHÍNH đối tượng này.
+   *
+   * Cần bên cạnh `fromJSON` vì `Player.cultivation` là `readonly` và
+   * `Combatant.realm` trỏ vào cùng object đó — thay bằng một instance mới sẽ để
+   * combatant giữ lại tham chiếu cũ, và nhân vật đánh bằng cảnh giới của bản
+   * lưu trước đó mà không có gì báo.
+   */
+  loadFrom(data: ReturnType<Cultivation['toJSON']>): void {
+    this.realm.major = data.major
+    this.realm.tier = data.tier
+    this.tuVi = data.tuVi
+    this.failStreak = data.failStreak
+    this.linhNhu = data.linhNhu
+    this.totalTuVi = data.totalTuVi
   }
 
   static fromJSON(data: ReturnType<Cultivation['toJSON']>): Cultivation {
