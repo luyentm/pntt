@@ -9,6 +9,7 @@ import { deriveStats, type BaseStats } from '@/game/Stats'
 import { Combatant, type CombatantView, type Side } from '../Combatant'
 import { CombatWorld } from '../CombatWorld'
 import { ProjectileSystem } from '../Projectile'
+import { SwordStorm } from '../SwordStorm'
 import { SkillCaster } from '../SkillCaster'
 
 const base: BaseStats = {
@@ -60,6 +61,7 @@ describe('SkillCaster', () => {
   let bus: EventBus<GameEvents>
   let world: CombatWorld
   let projectiles: ProjectileSystem
+  let swords: SwordStorm
   let me: Combatant
   let caster: SkillCaster
   let ctx: Parameters<SkillCaster['fixedUpdate']>[1]
@@ -73,7 +75,8 @@ describe('SkillCaster', () => {
     me = makeCombatant('player', 0, 0)
     world.add(me)
     caster = new SkillCaster(me, bus)
-    ctx = { world, projectiles, cursorX: 0, cursorZ: 0 }
+    swords = new SwordStorm(new Scene(), world, bus)
+    ctx = { world, projectiles, swords, cursorX: 0, cursorZ: 0 }
   })
 
   describe('cổng mở theo cảnh giới', () => {

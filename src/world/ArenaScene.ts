@@ -1,9 +1,23 @@
 import { Mesh, Vector3, type BufferGeometry, type Object3D } from 'three'
+import { canCraft, craft } from '@/game/Alchemy'
+import { BreakthroughTrial, type TrialOutcome } from '@/game/BreakthroughTrial'
 import { enemyDef } from '@/game/data/enemies'
+import { rollDrops, tuViReward } from '@/game/data/dropTables'
+import { itemDef } from '@/game/data/items'
+import { majorRealm } from '@/game/data/realms'
+import { recipeById } from '@/game/data/recipes'
 import { Hud } from '@/ui/Hud'
+import { KeyHints } from '@/ui/KeyHints'
 import { SkillBar } from '@/ui/SkillBar'
+import { TrialOverlay } from '@/ui/TrialOverlay'
 import { WorldBars } from '@/ui/WorldBars'
+import { AlchemyPanel, type AlchemyHost } from '@/ui/panels/AlchemyPanel'
+import { CultivationPanel, type CultivationHost } from '@/ui/panels/CultivationPanel'
+import { InventoryPanel, type InventoryHost } from '@/ui/panels/InventoryPanel'
+import type { Panel } from '@/ui/panels/Panel'
 import { Vfx } from '@/vfx/Vfx'
+import { PickupSystem } from './Pickups'
+import { SwordStorm } from './SwordStorm'
 import { CombatWorld } from './CombatWorld'
 import { ProjectileSystem } from './Projectile'
 import { Enemy, type EnemyContext } from './Enemy'
@@ -48,6 +62,10 @@ export class ArenaScene implements GameScene {
   projectiles!: ProjectileSystem
   readonly enemies: Enemy[] = []
 
+  pickups!: PickupSystem
+  /** Thanh Trúc Phong Vân Kiếm — 33 thanh trong một InstancedMesh. */
+  swords!: SwordStorm
+
   private ctx!: SceneContext
   private readonly objects: Object3D[] = []
   private marker?: Mesh
@@ -56,11 +74,29 @@ export class ArenaScene implements GameScene {
   private hud!: Hud
   private skillBar!: SkillBar
   private bars!: WorldBars
+  private hints!: KeyHints
   private enemyCtx!: EnemyContext
   private lastHp = -1
   private lastMp = -1
   private respawnTimer = 0
   private godMode = false
+
+  /** Màn thử dẫn khí khi đột phá — chỉ có một, do màn điều khiển. */
+  private readonly trial = new BreakthroughTrial()
+  private trialUi!: TrialOverlay
+  private culPanel!: CultivationPanel
+  private invPanel!: InventoryPanel
+  private alcPanel!: AlchemyPanel
+  private panels: Panel[] = []
+
+  /**
+   * Id những con đã trả thưởng.
+   *
+   * Cần vì `dead` còn đúng suốt mấy giây diễn cảnh chết: không đánh dấu thì mỗi
+   * bước fixed lại rơi thêm một lượt vật phẩm, và người chơi nhận hàng trăm Tu
+   * Vi từ một con quái. Id được dọn trong reap() nên tập này không phình mãi.
+   */
+  private readonly rewarded = new Set<number>()
 
   /** Điều khiển debug — bảng lil-gui đọc từ đây. */
   readonly debug: SceneDebugActions = {
@@ -87,6 +123,31 @@ export class ArenaScene implements GameScene {
     },
     enemyCount: () => this.enemies.length,
     aliveEnemyCount: () => this.combat.countAlive('enemy'),
+    addTuVi: (amount) => {
+      this.player.gainTuVi(amount)
+    },
+    giveItem: (id, count) => {
+      this.player.inventory.add(id, count)
+      this.ctx.bus.emit('toast', { text: `+${count} ${itemDef(id).name}`, kind: 'good' })
+    },
+    jumpToMajor: (major) => {
+      // Bỏ qua cả đan dược lẫn phép roll — đây là công cụ để tôi kiểm tra cân
+      // bằng ở Trúc Cơ / Kết Đan, không phải một đường chơi
+      const realm = this.player.cultivation.realm
+      realm.major = major
+      realm.tier = 0
+      this.player.cultivation.tuVi = 0
+      this.player.refreshStats()
+      this.ctx.bus.emit('cultivation:breakthrough', {
+        success: true,
+        realmName: this.player.cultivation.name,
+        chance: 1,
+        x: this.player.pos.x,
+        y: this.player.y,
+        z: this.player.pos.z,
+      })
+    },
+    realmLabel: () => this.player.cultivation.name,
   }
 
   load(ctx: SceneContext): void {
@@ -119,12 +180,28 @@ export class ArenaScene implements GameScene {
     this.combat.add(this.player.combatant)
     this.player.attachBus(ctx.bus)
     this.projectiles = new ProjectileSystem(three, this.combat, rng)
+    this.swords = new SwordStorm(three, this.combat, ctx.bus)
 
     this.enemyCtx = {
       world: this.combat,
       collision: this.collision,
       ground: this.terrain,
       rng,
+    }
+
+    this.pickups = new PickupSystem(three)
+    // Vật phẩm vào túi ngay khi bị hút tới — hệ vật phẩm không biết Player tồn tại
+    this.pickups.onCollect = (id, count) => {
+      this.player.inventory.add(id, count)
+      ctx.bus.emit('item:pickup', { id, count })
+      const def = itemDef(id)
+      this.vfx.floats.spawn(
+        this.player.pos.x,
+        this.player.y + 1.5,
+        this.player.pos.z,
+        `${def.name} ×${count}`,
+        'info',
+      )
     }
 
     const uiRoot = document.getElementById('ui-root')
@@ -134,6 +211,8 @@ export class ArenaScene implements GameScene {
     this.hud.setRealm(this.player.realm)
     this.skillBar = new SkillBar(uiRoot, ctx.bus)
     this.bars = new WorldBars(uiRoot)
+    this.hints = new KeyHints(uiRoot)
+    this.buildPanels(uiRoot)
 
     // Vụ nổ của phi hành khí: hệ phi hành khí không biết VFX tồn tại, chỉ gọi hook
     this.projectiles.onExplode = (x, y, z, radius, spec) => {
@@ -151,6 +230,12 @@ export class ArenaScene implements GameScene {
         e.side === 'player' ? Palette.linh : Palette.maHuyet,
       )
     })
+    ctx.bus.on('flight:toggle', ({ active }) => {
+      ctx.bus.emit('toast', {
+        text: active ? 'Ngự Kiếm Phi Hành' : 'Hạ kiếm',
+        kind: 'info',
+      })
+    })
     ctx.bus.on('combat:hit', () => {
       // Thanh máu chỉ hiện cho con vừa bị đánh — xem WorldBars
       for (const c of this.combat.all) {
@@ -163,6 +248,229 @@ export class ArenaScene implements GameScene {
     camera.snapTo(this.player.pos.x, this.player.y + 0.9, this.player.pos.z)
     three.updateMatrixWorld(true)
     ctx.bus.emit('scene:loaded', { name: this.name })
+  }
+
+  /**
+   * Dựng ba bảng và nối chúng vào người chơi.
+   *
+   * Các bảng nhận GETTER chứ không nhận giá trị: stat và cảnh giới đổi ngay giữa
+   * lúc bảng đang mở (đột phá, uống đan), nên chụp giá trị một lần lúc dựng sẽ
+   * làm bảng nói sai mà không có gì báo.
+   */
+  private buildPanels(uiRoot: HTMLElement): void {
+    const player = this.player
+    this.trialUi = new TrialOverlay(uiRoot)
+
+    const culHost: CultivationHost = {
+      get cultivation() {
+        return player.cultivation
+      },
+      get inventory() {
+        return player.inventory
+      },
+      get stats() {
+        return player.combatant.stats
+      },
+      requestBreakthrough: () => this.startTrial(),
+      drinkLinhNhu: () => this.drinkLinhNhu(),
+    }
+    const invHost: InventoryHost = {
+      get inventory() {
+        return player.inventory
+      },
+      useItem: (id) => {
+        const msg = player.useItem(id)
+        if (msg) this.ctx.bus.emit('toast', { text: msg, kind: 'good' })
+        return msg
+      },
+    }
+    const alcHost: AlchemyHost = {
+      get inventory() {
+        return player.inventory
+      },
+      get realm() {
+        return player.realm
+      },
+      get thanThuc() {
+        return player.combatant.stats.thanThuc
+      },
+      get linhLuc() {
+        return player.linhLuc
+      },
+      craftRecipe: (id) => this.craftRecipe(id),
+    }
+
+    this.culPanel = new CultivationPanel(uiRoot, culHost)
+    this.invPanel = new InventoryPanel(uiRoot, invHost)
+    this.alcPanel = new AlchemyPanel(uiRoot, alcHost)
+    this.panels = [this.culPanel, this.invPanel, this.alcPanel]
+  }
+
+  private closePanels(): void {
+    for (const panel of this.panels) panel.hide()
+  }
+
+  /** Mở một bảng và đóng các bảng khác — không bao giờ mở hai bảng cùng lúc. */
+  private togglePanel(target: Panel): void {
+    const wasOpen = target.isOpen
+    this.closePanels()
+    if (!wasOpen) target.show()
+  }
+
+  private drinkLinhNhu(): number {
+    const gained = this.player.drinkLinhNhu()
+    if (gained > 0) {
+      this.ctx.bus.emit('toast', { text: `Uống Tiểu Bình: +${gained} Tu Vi`, kind: 'good' })
+    } else {
+      this.ctx.bus.emit('toast', { text: 'Tiểu Bình chưa đủ linh nhũ', kind: 'bad' })
+    }
+    return gained
+  }
+
+  private craftRecipe(id: string): void {
+    const recipe = recipeById(id)
+    const player = this.player
+    const thanThuc = player.combatant.stats.thanThuc
+    const check = canCraft(recipe, player.inventory, player.realm, thanThuc, player.linhLuc)
+    if (!check.ok) {
+      this.ctx.bus.emit('toast', { text: 'Chưa luyện được đan này', kind: 'bad' })
+      return
+    }
+    const result = craft(
+      recipe,
+      player.inventory,
+      player.realm,
+      thanThuc,
+      player.linhLuc,
+      this.ctx.rng,
+    )
+    // Linh lực do màn trừ, không phải do Alchemy: luật luyện đan là hàm thuần
+    // để test được, còn linh lực là trạng thái của người chơi
+    player.linhLuc = Math.max(0, player.linhLuc - result.linhLucSpent)
+    this.ctx.bus.emit('toast', {
+      text: result.success
+        ? `Luyện thành ${itemDef(result.output).name} ×${result.outputCount}`
+        : 'Đan lô nổ — hoàn lại một nửa nguyên liệu',
+      kind: result.success ? 'good' : 'bad',
+    })
+  }
+
+  /**
+   * Bắt đầu đột phá: vào nhập định và mở màn thử dẫn khí.
+   * Chưa tiêu đan dược ở đây — đan chỉ mất khi thật sự thử ở cuối màn.
+   */
+  private startTrial(): void {
+    if (this.trial.active) return
+    const player = this.player
+    const c = player.cultivation
+    const check = c.canBreakthrough(player.inventory)
+    if (!check.ok) {
+      const pill = check.needPill
+      this.ctx.bus.emit('toast', {
+        text:
+          check.block === 'chuaDuTuVi'
+            ? 'Tu Vi chưa tới đỉnh cảnh giới'
+            : check.block === 'thieuDanDuoc'
+              ? `Thiếu ${pill ? itemDef(pill).name : 'đan dược'}`
+              : 'Đã tới cảnh giới cao nhất',
+        kind: 'bad',
+      })
+      return
+    }
+    this.closePanels()
+    this.trial.start(this.ctx.rng)
+    player.beginTrance()
+    this.trialUi.open(this.trial, majorRealm(c.realm.major + 1).name)
+  }
+
+  private updateTrial(dt: number): void {
+    if (!this.trial.active) return
+    const me = this.player.combatant
+
+    // Bị đánh gián đoạn thì HUỶ hẳn, KHÔNG tiêu đan dược. Trong truyện thì bị
+    // quấy giữa lúc đột phá là tai hoạ, nhưng ở đây một viên Trúc Cơ Đan là mấy
+    // chục phút đi gom nguyên liệu — mất nó vì một con yêu thử chạy ngang thì
+    // người chơi sẽ không bao giờ dám đột phá ngoài chỗ đã dọn sạch.
+    if (me.dead || me.stagger > 0) {
+      this.trial.abort()
+      this.trialUi.close()
+      this.player.endTrance()
+      this.ctx.bus.emit('toast', { text: 'Bị đánh gián đoạn — dẫn khí tan', kind: 'bad' })
+      return
+    }
+
+    const outcome = this.trial.update(dt, this.ctx.input.isDown('Space'))
+    if (outcome) this.resolveBreakthrough(outcome)
+  }
+
+  private resolveBreakthrough(outcome: TrialOutcome): void {
+    this.trialUi.close()
+    this.player.endTrance()
+
+    const player = this.player
+    const c = player.cultivation
+    const check = c.canBreakthrough(player.inventory, outcome.bonus)
+    if (!check.ok) {
+      this.ctx.bus.emit('toast', { text: 'Điều kiện đột phá không còn đủ', kind: 'bad' })
+      return
+    }
+
+    const result = c.attemptBreakthrough(player.inventory, this.ctx.rng, outcome.bonus)
+    // Gọi cả khi thất bại: thất bại làm tụt một tầng nhỏ nên stat cũng phải theo
+    player.refreshStats()
+    if (result.success) {
+      // Đột phá xong hồi đầy: đây là khoảnh khắc thưởng, và cũng để người chơi
+      // không vừa lên cảnh giới đã chết vì còn 12 máu của trước đó
+      player.combatant.hp = player.combatant.stats.maxSinhLuc
+      player.linhLuc = player.combatant.stats.maxLinhLuc
+    }
+
+    this.ctx.bus.emit('cultivation:breakthrough', {
+      success: result.success,
+      realmName: c.name,
+      chance: result.chance,
+      x: player.pos.x,
+      y: player.y,
+      z: player.pos.z,
+    })
+    this.ctx.bus.emit('toast', {
+      text: result.success
+        ? `Đột phá thành công — ${c.name}`
+        : `Đột phá thất bại (${Math.round(result.chance * 100)}%) — lần sau dễ hơn`,
+      kind: result.success ? 'good' : 'bad',
+    })
+  }
+
+  /**
+   * Trả thưởng cho những con vừa chết: Tu Vi chắc chắn, vật phẩm may rủi.
+   * Vật phẩm bật ra từ chỗ xác nằm nên người chơi nối được "con này rơi ra cái này".
+   */
+  private grantRewards(): void {
+    const rng = this.ctx.rng
+    for (const enemy of this.enemies) {
+      const c = enemy.combatant
+      if (!c.dead || this.rewarded.has(c.id)) continue
+      this.rewarded.add(c.id)
+
+      this.player.gainTuVi(tuViReward(enemy.def.id))
+      for (const drop of rollDrops(enemy.def.id, rng)) {
+        this.pickups.spawn(drop.id, drop.count, c.pos.x, c.y, c.pos.z, rng)
+      }
+    }
+  }
+
+  /** Đọc phím mở bảng và các lệnh tu luyện. */
+  private updateCultivationInput(): void {
+    const { input } = this.ctx
+    // Trong lúc nhập định thì mọi phím khác bị bỏ qua: chỉ còn SPACE để dẫn khí
+    if (this.trial.active) return
+
+    if (input.wasPressed('KeyC')) this.togglePanel(this.culPanel)
+    if (input.wasPressed('KeyI')) this.togglePanel(this.invPanel)
+    if (input.wasPressed('KeyK')) this.togglePanel(this.alcPanel)
+    if (input.wasPressed('Escape')) this.closePanels()
+    if (input.wasPressed('KeyG')) this.drinkLinhNhu()
+    if (input.wasPressed('KeyB')) this.startTrial()
   }
 
   /** Rải quái quanh luyện võ trường. */
@@ -348,15 +656,31 @@ export class ArenaScene implements GameScene {
     // đặc biệt trong đường gây sát thương
     if (this.godMode) this.player.combatant.invuln = 1
 
-    this.player.fixedUpdate(dt, input, camera, this.collision, this.combat, this.projectiles)
+    this.updateCultivationInput()
+    this.updateTrial(dt)
+
+    this.player.fixedUpdate(
+      dt,
+      input,
+      camera,
+      this.collision,
+      this.combat,
+      this.projectiles,
+      this.swords,
+    )
     for (const enemy of this.enemies) enemy.fixedUpdate(dt, this.enemyCtx)
     this.projectiles.fixedUpdate(dt, this.collision, this.terrain)
+    this.swords.fixedUpdate(dt)
+    this.pickups.fixedUpdate(dt, this.player.pos.x, this.player.pos.z, this.player.y, this.terrain)
 
     // Tách đàn SAU khi mọi thứ đã di chuyển, để không con nào bị xử lý hai lần
     this.combat.resolveCrowding()
     for (const enemy of this.enemies) enemy.combatant.applyTransform()
     this.player.combatant.applyTransform()
 
+    // Trả thưởng TRƯỚC khi dọn xác: reap() tháo con vật ra khỏi danh sách nên
+    // sau đó không còn chỗ nào biết nó từng là con gì để quay bảng rơi
+    this.grantRewards()
     this.reap()
     this.publishVitals(bus)
     this.handleDeath(dt)
@@ -373,6 +697,7 @@ export class ArenaScene implements GameScene {
       const enemy = this.enemies[i] as Enemy
       if (!removedSet.has(enemy.combatant)) continue
       this.ctx.three.remove(enemy.combatant.root)
+      this.rewarded.delete(enemy.combatant.id)
       this.enemies.splice(i, 1)
     }
   }
@@ -414,6 +739,7 @@ export class ArenaScene implements GameScene {
     const { input, camera } = this.ctx
     this.player.render(frameDt)
     for (const enemy of this.enemies) enemy.render(frameDt)
+    this.swords.render(frameDt)
 
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
     const w = canvas?.clientWidth ?? window.innerWidth
@@ -421,6 +747,9 @@ export class ArenaScene implements GameScene {
     this.vfx.update(frameDt, camera.camera, w, h)
     this.bars.update(frameDt, this.combat.all, camera.camera, w, h)
     this.skillBar.update(frameDt, this.player.caster, this.player.realm, this.player.linhLuc)
+    this.hud.setCultivation(this.player.cultivation)
+    for (const panel of this.panels) panel.tick(frameDt)
+    if (this.trialUi.isOpen) this.trialUi.update()
 
     // Khiên bám theo người chơi và mờ dần theo lượng còn hấp thụ được
     const me = this.player.combatant
@@ -464,10 +793,17 @@ export class ArenaScene implements GameScene {
     this.collision.clear()
     this.combat.clear()
     this.projectiles.dispose()
+    this.swords.dispose()
+    this.pickups.dispose()
+    this.rewarded.clear()
     this.vfx.dispose()
     this.hud.dispose()
     this.skillBar.dispose()
     this.bars.dispose()
+    this.hints.dispose()
+    this.trialUi.dispose()
+    for (const panel of this.panels) panel.dispose()
+    this.panels = []
     this.ctx.bus.emit('scene:unloaded', { name: this.name })
   }
 }

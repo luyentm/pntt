@@ -1,5 +1,6 @@
-import { MathUtils, Vector3 } from 'three'
-import { CAST } from '@/anim/clips/combat'
+import { Mesh, MathUtils, Vector3 } from 'three'
+import { CAST, FLY, MEDITATE } from '@/anim/clips/combat'
+import { flyingSwordGeometry } from '@/art/props/swords'
 import { buildChibi, chibiRadius, type Chibi } from '@/art/buildChibi'
 import type { Input } from '@/core/Input'
 import { MouseBtn } from '@/core/Input'
@@ -11,8 +12,12 @@ import {
   START_REALM,
   type AttackStep,
 } from '@/game/data/player'
-import type { RealmPosition } from '@/game/data/realms'
+import { REALM, realmOrdinal, type RealmPosition } from '@/game/data/realms'
+import { itemDef } from '@/game/data/items'
+import { Cultivation } from '@/game/Cultivation'
+import { Inventory } from '@/game/Inventory'
 import { deriveStats } from '@/game/Stats'
+import { materials } from '@/render/Materials'
 import type { IsoCamera } from '@/render/IsoCamera'
 import type { EventBus } from '@/core/EventBus'
 import type { GameEvents } from '@/core/events'
@@ -20,6 +25,7 @@ import type { CollisionWorld } from './Collision'
 import { Combatant } from './Combatant'
 import type { CombatWorld } from './CombatWorld'
 import type { ProjectileSystem } from './Projectile'
+import type { SwordStorm } from './SwordStorm'
 import { SkillCaster } from './SkillCaster'
 import type { HeightField } from './Terrain'
 import { ChibiView } from './views'
@@ -49,6 +55,33 @@ const AIM_ASSIST_REACH = 1.7
 /** Giới hạn mềm của bản đồ — không cho đi mãi vào trong sương. */
 const WORLD_RADIUS = 70
 
+// ---------- Ngự Kiếm Phi Hành (mở ở Trúc Cơ) ----------
+/** Cao độ bay so với mặt đất. */
+const FLY_ALTITUDE = 2.05
+/** Tốc độ bốc lên và tốc độ rơi xuống (unit/giây). */
+const FLY_RISE = 3.4
+const FLY_DROP = 5.4
+/** Bay nhanh hơn đi bộ bấy nhiêu lần. */
+const FLY_SPEED_MULT = 1.62
+/**
+ * Linh lực tốn mỗi giây khi đang bay, tính theo PHẦN của tổng linh lực.
+ *
+ * Không phải một hằng số tuyệt đối: linh lực tối đa tăng theo cảnh giới, nên
+ * một con số cố định sẽ khiến phi hành gần như miễn phí ở Kết Đan (bay được 15
+ * phút liền) và mất hẳn tính chất "phải cân nhắc khi nào nên bay". Theo phần
+ * trăm thì ở mọi cảnh giới đều bay được khoảng 45 giây một hơi.
+ */
+const FLY_COST_FRACTION = 0.022
+/**
+ * Cao hơn mốc này thì bỏ qua va chạm với vật cản tĩnh.
+ * Thấp hơn mốc thì vẫn bị chặn, nên lúc vừa nhấc lên không xuyên qua tảng đá.
+ */
+const FLY_CLEARANCE = 0.85
+/** Khoảng cách thời gian giữa hai vệt gió. */
+const FLY_TRAIL_INTERVAL = 0.13
+/** Cảnh giới tối thiểu để ngự kiếm phi hành. */
+const FLY_REALM: RealmPosition = { major: REALM.TRUC_CO, tier: 0 }
+
 type AttackPhase = 'none' | 'windup' | 'recover'
 
 /** Nội suy góc theo đường ngắn nhất, có giới hạn bước. */
@@ -64,7 +97,18 @@ export class Player {
   readonly chibi: Chibi
   readonly combatant: Combatant
   caster!: SkillCaster
-  realm: RealmPosition = { ...START_REALM }
+  readonly cultivation = new Cultivation(START_REALM)
+  readonly inventory = new Inventory()
+  /** Đang toạ thiền — mất khả năng di chuyển, đổi lấy Tu Vi. */
+  meditating = false
+  /**
+   * Đang nhập định để đột phá.
+   *
+   * Khác `meditating`: toạ thiền do người chơi giữ phím và nhả ra là xong, còn
+   * nhập định do màn thử dẫn khí điều khiển — chỉ ArenaScene mới được mở và
+   * đóng nó, vì nó phải khớp với vòng đời của màn thử.
+   */
+  entranced = false
 
   private ground: HeightField | null = null
   private bus: EventBus<GameEvents> | null = null
@@ -75,6 +119,14 @@ export class Player {
 
   /** Linh lực hiện tại. Chưa tiêu vào đâu tới M4, nhưng đã hồi để HUD nói thật. */
   linhLuc = 0
+
+  /** Đang cưỡi phi kiếm. */
+  flying = false
+  /** Cao độ hiện tại trên mặt đất — nội suy nên lúc lên/xuống thấy được. */
+  private flyHeight = 0
+  private flyTrailTimer = 0
+  /** Phi kiếm dưới chân. Con của chibi.root nên tự bám vị trí và hướng nhân vật. */
+  private readonly sword: Mesh
 
   private phase: AttackPhase = 'none'
   private comboStep = 0
@@ -94,22 +146,48 @@ export class Player {
       detail: 'full',
       ...HAN_LAP_LOOK,
     })
-    const stats = deriveStats(HAN_LAP_BASE, this.realm)
+    const stats = deriveStats(HAN_LAP_BASE, this.cultivation.realm)
     this.combatant = new Combatant(
       'player',
       stats,
-      this.realm,
+      this.cultivation.realm,
       chibiRadius(1),
       new ChibiView(this.chibi),
     )
     this.combatant.view.showIdle()
     this.linhLuc = stats.maxLinhLuc
+
+    // Gắn vào chibi.root, KHÔNG vào xương: phi kiếm phải đứng yên dưới chân
+    // trong khi thân người nhấp nhô theo clip. Gắn vào xương thì kiếm cũng
+    // nhấp nhô, và mất luôn cảm giác người đang đứng trên một vật rắn.
+    this.sword = new Mesh(
+      flyingSwordGeometry(),
+      materials.flat(0xffffff, { vertexColors: true }),
+    )
+    this.sword.name = 'phiKiem'
+    this.sword.position.set(0, -0.05, 0.04)
+    this.sword.visible = false
+    this.sword.castShadow = false
+    this.chibi.root.add(this.sword)
+  }
+
+  /** Đã tới Trúc Cơ chưa — cổng mở của Ngự Kiếm Phi Hành. */
+  get canFly(): boolean {
+    return realmOrdinal(this.cultivation.realm) >= realmOrdinal(FLY_REALM)
   }
 
   /** Gắn bus để thi triển pháp thuật. Phải gọi trước fixedUpdate. */
   attachBus(bus: EventBus<GameEvents>): void {
     this.bus = bus
     this.caster = new SkillCaster(this.combatant, bus)
+  }
+
+  /**
+   * Cảnh giới. Là VIEW vào `cultivation.realm`, không phải bản sao — nếu giữ
+   * hai bản thì đột phá xong sẽ có chỗ đọc cảnh giới cũ và stat lệch âm thầm.
+   */
+  get realm(): RealmPosition {
+    return this.cultivation.realm
   }
 
   get pos(): { x: number; z: number } {
@@ -141,8 +219,8 @@ export class Player {
   refreshStats(): void {
     const hpRatio = this.combatant.hp / Math.max(1, this.combatant.stats.maxSinhLuc)
     const mpRatio = this.linhLuc / Math.max(1, this.combatant.stats.maxLinhLuc)
-    this.combatant.stats = deriveStats(HAN_LAP_BASE, this.realm)
-    this.combatant.realm = this.realm
+    this.combatant.stats = deriveStats(HAN_LAP_BASE, this.cultivation.realm)
+    this.combatant.realm = this.cultivation.realm
     // Giữ TỈ LỆ chứ không giữ con số: đột phá mà máu vẫn 30/1200 thì vô nghĩa
     this.combatant.hp = Math.max(1, Math.round(this.combatant.stats.maxSinhLuc * hpRatio))
     this.linhLuc = Math.round(this.combatant.stats.maxLinhLuc * mpRatio)
@@ -163,6 +241,9 @@ export class Player {
   }
 
   spawn(x: number, z: number, facing = 0): void {
+    this.flying = false
+    this.flyHeight = 0
+    this.sword.visible = false
     this.combatant.place(x, z, this.groundHeight(x, z), facing)
     this.vx = 0
     this.vz = 0
@@ -182,6 +263,7 @@ export class Player {
     collision: CollisionWorld,
     world: CombatWorld,
     projectiles: ProjectileSystem,
+    swords: SwordStorm,
   ): void {
     const me = this.combatant
     const dot = me.tickTimers(dt)
@@ -191,10 +273,35 @@ export class Player {
 
     // Trường Xuân Công: hồi linh lực liên tục. Trong truyện đây chính là ưu thế
     // lớn nhất của công pháp này — tu luyện và hồi phục nhanh hơn người khác.
-    this.linhLuc = Math.min(me.stats.maxLinhLuc, this.linhLuc + me.stats.maxLinhLuc * 0.035 * dt)
+    const regen = this.meditating ? 0.12 : 0.035
+    this.linhLuc = Math.min(me.stats.maxLinhLuc, this.linhLuc + me.stats.maxLinhLuc * regen * dt)
+
+    // Tiểu Bình tự tích linh nhũ, kể cả khi đang đánh nhau — đúng như trong truyện
+    this.cultivation.tickLinhNhu(dt)
 
     if (me.dead) {
+      // Chết thì rơi khỏi phi kiếm — applyMotion sẽ hạ dần cao độ về mặt đất
+      this.flying = false
+      this.flyHeight = Math.max(0, this.flyHeight - FLY_DROP * dt)
+      this.sword.visible = false
       this.applyMotion(dt, 0, 0, collision)
+      return
+    }
+
+    if (this.entranced) {
+      // Nhập định: đứng yên, không đánh, không thi triển. Vẫn ăn đòn được —
+      // đó chính là chỗ căng của màn thử: đột phá giữa bãi quái là tự tìm khổ.
+      this.applyMotion(dt, 0, 0, collision)
+      // Vẫn nhịp bộ thi triển để hồi chiêu tiếp tục chạy trong lúc nhập định.
+      // An toàn vì beginTrance() đã reset nó và trong lúc nhập định không đọc
+      // phím pháp thuật, nên không thể có chiêu nào đang chờ phát.
+      this.caster.fixedUpdate(dt, {
+        world,
+        projectiles,
+        swords,
+        cursorX: me.pos.x,
+        cursorZ: me.pos.z,
+      })
       return
     }
 
@@ -223,14 +330,106 @@ export class Player {
       return
     }
 
+    this.updateMeditation(dt, input)
+    if (this.meditating) {
+      // Toạ thiền thì không làm gì khác: đó là cái giá của việc tu luyện nhanh
+      this.applyMotion(dt, 0, 0, collision)
+      return
+    }
+
+    this.updateFlight(dt, input)
     this.updateAim(input, camera, dt)
-    this.updateSkills(dt, input, camera, world, projectiles)
-    this.updateAttack(dt, world)
+    this.updateSkills(dt, input, camera, world, projectiles, swords)
+    // Đang cưỡi kiếm thì không chém: hai chân đang đứng trên chính thanh kiếm
+    // đó. Đây là cái giá thật của phi hành — đổi đòn đánh gần lấy tốc độ, tầm
+    // nhìn và khả năng vượt địa hình, nên bay không phải là lựa chọn luôn đúng.
+    if (this.flying) {
+      this.queuedAttack = false
+      this.phase = 'none'
+    } else {
+      this.updateAttack(dt, world)
+    }
     this.updateMovement(dt, input, camera, collision)
 
-    if (this.phase === 'none' && !this.caster.isCasting) {
+    // Lúc bay thì clip FLY giữ nguyên, không để clip di chuyển ghi đè
+    if (this.phase === 'none' && !this.caster.isCasting && !this.flying) {
       this.combatant.view.showMove(this.speed)
     }
+  }
+
+  /**
+   * Ngự Kiếm Phi Hành: bấm `Space` để lên/xuống.
+   *
+   * Là một CHẾ ĐỘ DI CHUYỂN, không phải một ô pháp thuật: nó đổi hẳn cách đi
+   * lại (bay qua rừng, qua đá, nhanh hơn) nên nếu nhét vào ô skill có hồi chiêu
+   * thì cảm giác "vừa đột phá Trúc Cơ là cả thế giới nhỏ lại" sẽ không còn.
+   */
+  private updateFlight(dt: number, input: Input): void {
+    const me = this.combatant
+
+    if (input.wasPressed('Space')) {
+      if (this.flying) {
+        this.stopFlying()
+      } else if (!this.canFly) {
+        this.bus?.emit('skill:failed', { reason: 'Phải tới Trúc Cơ mới ngự kiếm phi hành' })
+      } else if (this.linhLuc < this.flyCostPerSecond() * 2) {
+        this.bus?.emit('skill:failed', { reason: 'Không đủ linh lực để ngự kiếm' })
+      } else {
+        this.startFlying()
+      }
+    }
+
+    if (this.flying) {
+      this.linhLuc = Math.max(0, this.linhLuc - this.flyCostPerSecond() * dt)
+      // Hết linh lực hoặc bị đánh choáng thì RƠI. Đây là chỗ nguy của phi hành:
+      // bay giữa bãi quái mà ăn một đòn choáng là mất luôn thế bay.
+      if (this.linhLuc <= 0 || me.stagger > 0) this.stopFlying()
+    }
+
+    const target = this.flying ? FLY_ALTITUDE : 0
+    const rate = this.flying ? FLY_RISE : FLY_DROP
+    if (this.flyHeight < target) this.flyHeight = Math.min(target, this.flyHeight + rate * dt)
+    else if (this.flyHeight > target) this.flyHeight = Math.max(target, this.flyHeight - rate * dt)
+
+    this.sword.visible = this.flyHeight > 0.02
+
+    if (this.flying && this.speed > 1.4) {
+      this.flyTrailTimer -= dt
+      if (this.flyTrailTimer <= 0) {
+        this.flyTrailTimer = FLY_TRAIL_INTERVAL
+        this.bus?.emit('flight:trail', {
+          x: me.pos.x,
+          y: me.y,
+          z: me.pos.z,
+          facing: me.facing,
+        })
+      }
+    }
+  }
+
+  /** Linh lực tốn mỗi giây khi bay, ở cảnh giới hiện tại. */
+  private flyCostPerSecond(): number {
+    return this.combatant.stats.maxLinhLuc * FLY_COST_FRACTION
+  }
+
+  private startFlying(): void {
+    this.flying = true
+    this.meditating = false
+    this.phase = 'none'
+    this.chainTimer = 0
+    this.queuedAttack = false
+    this.flyTrailTimer = 0
+    this.chibi.animator.clearOverlay()
+    this.chibi.animator.play(FLY, 0.18)
+    this.chibi.animator.timeScale = 1
+    this.bus?.emit('flight:toggle', { active: true })
+  }
+
+  private stopFlying(): void {
+    if (!this.flying) return
+    this.flying = false
+    this.combatant.view.showIdle()
+    this.bus?.emit('flight:toggle', { active: false })
   }
 
   /** Đọc phím 1..6 và cập nhật bộ thi triển. */
@@ -240,6 +439,7 @@ export class Player {
     camera: IsoCamera,
     world: CombatWorld,
     projectiles: ProjectileSystem,
+    swords: SwordStorm,
   ): void {
     const me = this.combatant
     // Điểm ngắm dưới con trỏ, chiếu ở đúng cao độ chân nhân vật
@@ -247,6 +447,7 @@ export class Player {
     const ctx = {
       world,
       projectiles,
+      swords,
       cursorX: this.cursor.x,
       cursorZ: this.cursor.z,
     }
@@ -280,6 +481,119 @@ export class Player {
     const dz = this.cursor.z - me.pos.z
     if (Math.hypot(dx, dz) < 0.3) return
     me.facing = Math.atan2(dx, dz)
+  }
+
+  /** Vào nhập định để đột phá. ArenaScene gọi khi màn thử bắt đầu. */
+  beginTrance(): void {
+    this.entranced = true
+    this.meditating = false
+    this.stopFlying()
+    this.phase = 'none'
+    this.chainTimer = 0
+    this.queuedAttack = false
+    this.caster.reset()
+    this.chibi.animator.clearOverlay()
+    this.chibi.animator.play(MEDITATE, 0.25)
+    this.chibi.animator.timeScale = 1
+  }
+
+  /** Ra khỏi nhập định. */
+  endTrance(): void {
+    if (!this.entranced) return
+    this.entranced = false
+    this.combatant.view.showIdle()
+  }
+
+  /**
+   * Toạ thiền: giữ `F` khi đang đứng yên.
+   *
+   * Tự thoát ngay khi có input di chuyển hoặc khi bị đánh — người chơi không
+   * bao giờ nên bị kẹt trong trạng thái bất lực mà phải bấm thêm nút để thoát.
+   */
+  private updateMeditation(dt: number, input: Input): void {
+    const wantsMeditate = input.isDown('KeyF')
+    const moving = input.moveAxis().x !== 0 || input.moveAxis().z !== 0
+
+    if (this.meditating) {
+      if (!wantsMeditate || moving || this.combatant.stagger > 0) {
+        this.meditating = false
+        this.combatant.view.showIdle()
+        return
+      }
+      const result = this.cultivation.meditate(dt)
+      if (result.tiersGained > 0 && this.bus) {
+        this.onTierUp(result.tiersGained)
+      }
+      return
+    }
+
+    if (wantsMeditate && !moving && this.speed < 0.3 && !this.isAttacking && !this.caster.isCasting) {
+      this.meditating = true
+      this.stopFlying()
+      this.chibi.animator.clearOverlay()
+      this.chibi.animator.play(MEDITATE, 0.2)
+      this.chibi.animator.timeScale = 1
+    }
+  }
+
+  /** Cộng Tu Vi từ nguồn ngoài (giết quái, đan dược, linh thạch). */
+  gainTuVi(amount: number): void {
+    const result = this.cultivation.gainTuVi(amount)
+    if (result.tiersGained > 0) this.onTierUp(result.tiersGained)
+  }
+
+  private onTierUp(tiers: number): void {
+    // Stat phải tính lại NGAY: nếu đợi tới frame sau thì có một frame nhân vật
+    // đã lên tầng mà vẫn đánh bằng sức của tầng cũ
+    this.refreshStats()
+    this.bus?.emit('cultivation:tierUp', {
+      realmName: this.cultivation.name,
+      tiers,
+      x: this.combatant.pos.x,
+      y: this.combatant.y,
+      z: this.combatant.pos.z,
+    })
+  }
+
+  /** Uống hết Tiểu Bình. Trả về Tu Vi nhận được. */
+  drinkLinhNhu(): number {
+    const before = this.cultivation.realm.tier
+    const gained = this.cultivation.drinkLinhNhu()
+    if (this.cultivation.realm.tier > before) {
+      this.onTierUp(this.cultivation.realm.tier - before)
+    }
+    return gained
+  }
+
+  /** Dùng một vật phẩm trong túi. Trả về mô tả kết quả, hoặc null nếu không dùng được. */
+  useItem(id: string): string | null {
+    if (!this.inventory.has(id)) return null
+    const def = itemDef(id)
+    const me = this.combatant
+
+    switch (def.use.type) {
+      case 'tuVi':
+        this.inventory.remove(id)
+        this.gainTuVi(def.use.amount)
+        return `+${def.use.amount} Tu Vi`
+      case 'hoiSinhLuc': {
+        if (me.hp >= me.stats.maxSinhLuc) return null
+        this.inventory.remove(id)
+        const healed = Math.min(def.use.amount, me.stats.maxSinhLuc - me.hp)
+        me.hp += healed
+        return `+${Math.round(healed)} Sinh Lực`
+      }
+      case 'hoiLinhLuc': {
+        if (this.linhLuc >= me.stats.maxLinhLuc) return null
+        this.inventory.remove(id)
+        const restored = Math.min(def.use.amount, me.stats.maxLinhLuc - this.linhLuc)
+        this.linhLuc += restored
+        return `+${Math.round(restored)} Linh Lực`
+      }
+      default:
+        // Đan dược đột phá không "dùng" trực tiếp — nó được tiêu trong lúc đột phá
+        return null
+    }
   }
 
   /** Trong lúc ra đòn thì quay theo con trỏ chuột — ngắm bằng chuột như ARPG. */
@@ -396,7 +710,10 @@ export class Player {
     // xem phim, còn chậm lại vẫn giữ được sức nặng của đòn đánh
     const castScale = this.caster.activeSkill?.moveScale ?? 1
     const attackScale = (this.phase === 'none' ? 1 : this.currentStep().moveScale) * castScale
-    const base = this.combatant.effectiveSpeed() * (walking ? WALK_MULTIPLIER : 1)
+    const base =
+      this.combatant.effectiveSpeed() *
+      (walking ? WALK_MULTIPLIER : 1) *
+      (this.flying ? FLY_SPEED_MULT : 1)
     const targetSpeed = inputLen > 1e-4 ? base * attackScale : 0
 
     if (inputLen > 1e-4) {
@@ -439,7 +756,9 @@ export class Player {
     me.pos.x += (this.vx + me.knockVx + dashVx) * dt
     me.pos.z += (this.vz + me.knockVz + dashVz) * dt
 
-    collision.resolve(me.pos, me.radius)
+    // Đủ cao thì bay qua cây và đá; còn thấp thì vẫn bị chặn, nên lúc vừa nhấc
+    // lên không có chuyện xuyên thẳng qua tảng đá đang đứng cạnh
+    if (this.flyHeight < FLY_CLEARANCE) collision.resolve(me.pos, me.radius)
 
     const distFromCenter = Math.hypot(me.pos.x, me.pos.z)
     if (distFromCenter > WORLD_RADIUS) {
@@ -451,7 +770,7 @@ export class Player {
     // Tốc độ THỰC TẾ sau va chạm, không phải tốc độ mong muốn: khi bị chặn bởi
     // tảng đá thì nhân vật phải đứng yên chứ không được chạy tại chỗ
     this.speed = MathUtils.clamp(Math.hypot(this.vx, this.vz), 0, 99)
-    me.y = this.groundHeight(me.pos.x, me.pos.z)
+    me.y = this.groundHeight(me.pos.x, me.pos.z) + this.flyHeight
     me.applyTransform()
   }
 

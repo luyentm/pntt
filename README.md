@@ -29,7 +29,14 @@ Mở http://localhost:5173
 | WASD / phím mũi tên | Di chuyển (theo hướng camera) |
 | Chuột trái (hoặc `J`) | Chém — bấm liên tiếp để nối combo 3 nhát. Giữ để chém liên tục |
 | Giữ Shift | Đi chậm |
-| `1`–`6` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù |
+| `1`–`7` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù · 竹 Thanh Trúc Phong Vân Kiếm |
+| Giữ `F` | Toạ thiền — tăng Tu Vi chậm và đều. Tự thoát khi di chuyển hoặc bị đánh |
+| `G` | Uống hết Tiểu Bình linh nhũ để lấy Tu Vi |
+| `B` | Đột phá đại cảnh giới (vào màn thử dẫn khí) |
+| `Space` | Ngự Kiếm Phi Hành — bật/tắt, mở ở Trúc Cơ |
+| `C` / `I` / `K` | Bảng Tu Luyện / Túi Đồ / Luyện Đan (`Esc` đóng) |
+
+Trong màn thử dẫn khí: bấm `Space` mỗi khi con trỏ đi vào vùng sáng.
 
 ## Kiến trúc
 
@@ -38,7 +45,7 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
 - **Không có asset ngoài nào.** Không texture, không `.glb`, không file âm thanh.
   Model chibi và prop được **sinh bằng code** từ khối cơ bản + vertex color;
   animation là rig `Group` lồng nhau (không xương); âm thanh sinh bằng WebAudio.
-  Bundle ~166 KB gz, load tức thì, chạy offline.
+  Bundle ~206 KB gz, load tức thì, chạy offline.
 - **Vòng lặp fixed-timestep 60Hz + nội suy** (`core/Loop.ts`) — combat và AI xác định,
   không phụ thuộc fps.
 - **Va chạm tự viết**, mọi thứ là hình tròn trên mặt phẳng XZ + spatial hash.
@@ -156,6 +163,65 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - Mái kiến trúc phải là **hai tấm dốc chụm sống nóc**; một hộp phẳng nằm ngang đọc
   ra là "tấm ván xanh" chứ không phải mái.
 
+### M5 + M6 — tu luyện và vật phẩm
+
+- **Đột phá thất bại KHÔNG tụt đại cảnh giới và không chết** — chỉ mất Tu Vi, tụt một
+  tầng nhỏ, và **cộng thêm tỉ lệ cho lần sau** (pity). Một cơ chế xoá được nhiều giờ
+  chơi sẽ khiến người chơi không dám thử, mà thứ đáng nhớ ở đây là khoảnh khắc vượt
+  qua, không phải nỗi sợ mất mát.
+- Màn thử dẫn khí **chỉ CỘNG THÊM vào tỉ lệ** (tối đa +28%), không thay thế phép roll.
+  Nếu kỹ năng quyết định hoàn toàn thì "đột phá" biến thành trò bấm nhịp và mất hẳn
+  chất cơ duyên; ngược lại nếu không thưởng gì thì màn thử vô nghĩa.
+- Bị đánh gián đoạn giữa lúc đột phá thì **huỷ hẳn, KHÔNG tiêu đan dược**. Một viên
+  Trúc Cơ Đan là mấy chục phút gom nguyên liệu — mất nó vì một con yêu thử chạy ngang
+  thì người chơi sẽ không bao giờ dám đột phá ở ngoài chỗ đã dọn sạch.
+- Các vùng sáng của màn thử được đặt trong **ô riêng, không bao giờ chồng nhau**. Rải
+  tự do thì hai vùng trùng chỗ, và khi đó một điểm trên thanh phải bấm hai lần mới
+  xong — người chơi đọc ra là "bấm trúng mà game không nhận" (có test 300 seed).
+- Tu Vi là phần thưởng **chắc chắn**, vật phẩm là phần thưởng **may rủi**. Để cả hai
+  đều may rủi thì có những lượt đánh mãi mà không tiến bộ gì.
+- Phần thưởng phải trả **trước khi dọn xác** — `reap()` tháo con vật ra khỏi danh sách
+  nên sau đó không còn chỗ nào biết nó từng là con gì để quay bảng rơi. Và phải đánh
+  dấu con đã trả thưởng: `dead` còn đúng suốt mấy giây diễn cảnh chết, không đánh dấu
+  thì mỗi bước fixed lại rơi thêm một lượt.
+- **Giá của phi hành tính theo PHẦN linh lực tối đa** (2,2%/giây), không phải hằng số.
+  Thử hằng số 3,6/giây trước: tới Kết Đan thì bay được 15 phút liền và phi hành mất
+  hẳn tính chất "phải cân nhắc khi nào nên bay". Cùng một lỗi với việc để độ mạnh
+  khiên là hằng số.
+- Bay thì **không chém được** (hai chân đang đứng trên chính thanh kiếm đó) và **bị
+  choáng là rơi**. Không có hai điều đó thì phi hành là lựa chọn luôn đúng, và cả
+  phần chiến đấu trên mặt đất thành vô dụng ngay khi vào Trúc Cơ.
+- Đủ cao mới bỏ qua va chạm tĩnh (`FLY_CLEARANCE = 0.85`): bỏ ngay từ lúc nhấc lên
+  thì nhân vật xuyên thẳng qua tảng đá đang đứng cạnh.
+- 33 thanh kiếm trúc gây sát thương theo **vòng quét có nhịp** (0,3 giây/mục tiêu),
+  không theo từng thanh. Tính theo từng thanh thì một con quái đứng đúng chỗ ăn 33 đòn
+  trong một frame và chết tức khắc bất kể cảnh giới — phá vỡ luật chênh lệch cảnh giới,
+  thứ quan trọng nhất của cả hệ chiến đấu.
+- Vòng kiếm **bung ra rồi GIỮ**, không loang ra mãi. Thử cho loang tới 7 unit trước:
+  33 thanh rải trên vòng lớn nhìn ra là một đống que bay tản mát và người chơi không
+  còn điều khiển được gì. Giữ vòng chặt (bán kính 3) thì đàn kiếm đặc, và người chơi
+  **lái** được nó bằng cách đi bộ.
+- Lưỡi kiếm phải **nghiêng gần vuông góc** quanh trục bay. Để nằm ngang thì từ góc iso
+  nó đọc ra là một que gỗ rơi trên đất. Và 33 thanh phải chia thành **ba vòng đều quay
+  ngược nhau** — rải tự do thì thành một đống que bay lộn xộn, chia vòng thì đọc ra
+  ngay là một đội hình do người tu điều khiển.
+- Cột sáng đột phá dùng **cộng sáng (`AdditiveBlending`)**, không phủ mờ. Phủ mờ ở
+  opacity 0,9 làm cột thành một tấm ván vàng đặc che kín nhân vật — mà cả khoảnh khắc
+  này là để NHÌN nhân vật đang lên cảnh giới.
+- Lên **tầng nhỏ** thì hiệu ứng nhỏ có chủ ý. Nếu mỗi tầng cũng nổ cột sáng thì 13 tầng
+  Luyện Khí sẽ làm khoảnh khắc đột phá đại cảnh giới mất thiêng.
+- Dáng toạ thiền phải **khép tay** rồi gập khuỷu cho hai bàn tay chụm trước bụng. Dáng
+  xoè tay ra hai bên đọc ra là "đang đứng chờ"; từ góc iso chỉ có bóng ngoài là đọc
+  được, nên khép tay quan trọng hơn mọi chi tiết khác của clip.
+- Bảng UI nhận **getter, không nhận giá trị**: stat và cảnh giới đổi ngay giữa lúc bảng
+  đang mở (đột phá, uống đan), nên chụp giá trị một lần lúc dựng sẽ làm bảng nói sai mà
+  không có gì báo.
+- Đan đột phá **không có nút "Dùng"** trong túi đồ — nó bị tiêu trong lúc đột phá. Cho
+  nút thì người chơi sẽ bấm và tưởng mình vừa làm mất viên đan quý nhất trò chơi.
+- Con trỏ của màn thử dịch một **lớp bọc rộng bằng cả thanh**, kim chỉ nằm trong nó.
+  Dịch thẳng cái kim thì phần trăm tính theo bề rộng của kim và con trỏ gần như không
+  nhích.
+
 ## Tiến độ
 
 - [x] **M0** Scaffold — renderer, camera iso, trời + sương mù, vòng lặp 60Hz, outline, bloom, debug panel
@@ -163,7 +229,8 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - [x] **M2** Map sơn môn — terrain noise, cổng phái, đèn đá, đài luyện đan, rừng tùng + khóm tre (instanced)
 - [x] **M3** Combat cơ bản — combo 3 nhát, hitbox hình quạt, AI quái, thanh máu, HUD, VFX
 - [x] **M4** Pháp thuật & VFX — 6 chiêu, phi hành khí, trạng thái (khiên/băng/thiêu), thanh pháp thuật
-- [ ] **M5** Tu luyện & đột phá cảnh giới
-- [ ] **M6** Vật phẩm, túi đồ, luyện đan
+- [x] **M5+M6** Tu luyện, đột phá, vật phẩm — 13 tầng Luyện Khí, toạ thiền, Tiểu Bình,
+      màn thử dẫn khí + `BreakthroughFx`, Trúc Cơ → Ngự Kiếm Phi Hành, Kết Đan → 33 kiếm trúc,
+      drop table, túi đồ, luyện đan, ba bảng UI
 - [ ] **M7** Tướng & đại chiến
 - [ ] **M8** Hoàn thiện

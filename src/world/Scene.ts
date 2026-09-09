@@ -35,6 +35,12 @@ export interface SceneDebugActions {
   setGodMode(on: boolean): void
   enemyCount(): number
   aliveEnemyCount(): number
+  /** Cộng thẳng Tu Vi — để đi hết 13 tầng Luyện Khí mà không phải cày. */
+  addTuVi(amount: number): void
+  giveItem(id: string, count: number): void
+  /** Nhảy thẳng tới một đại cảnh giới, bỏ qua đan dược và phép roll. */
+  jumpToMajor(major: number): void
+  realmLabel(): string
 }
 
 export interface GameScene {

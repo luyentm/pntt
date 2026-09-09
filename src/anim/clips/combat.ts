@@ -305,3 +305,140 @@ export const CAST: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
     },
   ],
 })
+
+/**
+ * Toạ thiền: ngồi khoanh chân, tay đặt trên đầu gối, người hơi thở.
+ *
+ * Xoay `root` để hạ cả người xuống và gập chân ra trước — đó là cách duy nhất
+ * để thành thế NGỒI thật, chứ chỉ gập đầu gối thì nhân vật vẫn đứng.
+ */
+export const MEDITATE: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
+  name: 'meditate',
+  duration: 4.6,
+  frames: [
+    {
+      t: 0,
+      pose: {
+        root: { py: -0.2 },
+        hip: { py: -0.04 },
+        // Chân khoanh: đùi mở ngang ra trước, cẳng chân gập vào trong
+        hipL: { rx: -1.5, rz: 0.62 },
+        kneeL: { rx: 1.45 },
+        hipR: { rx: -1.5, rz: -0.62 },
+        kneeR: { rx: 1.45 },
+        // Tay KHÉP vào thân rồi gập khuỷu để hai bàn tay chụm trước bụng.
+        // Dáng xoè tay ra hai bên đọc ra là "đang đứng chờ" chứ không phải
+        // nhập định — mà từ góc iso thì chỉ có bóng ngoài của dáng là đọc được,
+        // nên khép tay lại quan trọng hơn mọi chi tiết khác của clip này.
+        shoulderL: { rx: -0.28, rz: -0.1 },
+        elbowL: { rx: -1.3 },
+        shoulderR: { rx: -0.28, rz: 0.1 },
+        elbowR: { rx: -1.3 },
+        torso: { rx: 0.1 },
+        head: { rx: 0.16 },
+      },
+    },
+    {
+      t: 2.3,
+      pose: {
+        root: { py: -0.185 },
+        hip: { py: -0.028 },
+        hipL: { rx: -1.5, rz: 0.62 },
+        kneeL: { rx: 1.45 },
+        hipR: { rx: -1.5, rz: -0.62 },
+        kneeR: { rx: 1.45 },
+        shoulderL: { rx: -0.33, rz: -0.08 },
+        elbowL: { rx: -1.26 },
+        shoulderR: { rx: -0.33, rz: 0.08 },
+        elbowR: { rx: -1.26 },
+        // Hơi thở: ngực nở, đầu ngẩng rất nhẹ
+        torso: { rx: 0.02 },
+        head: { rx: 0.1 },
+      },
+    },
+    {
+      t: 4.6,
+      pose: {
+        root: { py: -0.2 },
+        hip: { py: -0.04 },
+        hipL: { rx: -1.5, rz: 0.62 },
+        kneeL: { rx: 1.45 },
+        hipR: { rx: -1.5, rz: -0.62 },
+        kneeR: { rx: 1.45 },
+        shoulderL: { rx: -0.28, rz: -0.1 },
+        elbowL: { rx: -1.3 },
+        shoulderR: { rx: -0.28, rz: 0.1 },
+        elbowR: { rx: -1.3 },
+        torso: { rx: 0.1 },
+        head: { rx: 0.16 },
+      },
+    },
+  ],
+})
+
+/**
+ * Ngự Kiếm Phi Hành: đứng trên phi kiếm.
+ *
+ * Chân KHÔNG khoanh mà hơi khuỵu và mở nhẹ, thân nghiêng về trước, hai tay đưa
+ * ra sau lấy thăng bằng — dáng của người đang CƯỠI, không phải đang bay lơ lửng.
+ * Đó là khác biệt duy nhất để người chơi nhìn ra "mình đang đứng trên thanh kiếm"
+ * chứ không phải "mình đang bị bốc lên".
+ */
+export const FLY: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
+  name: 'fly',
+  duration: 2.4,
+  frames: [
+    {
+      t: 0,
+      pose: {
+        // Nghiêng cả người về trước theo hướng bay
+        root: { rx: -0.16 },
+        torso: { rx: -0.1 },
+        head: { rx: 0.14 },
+        // Tay ngả ra sau, hơi xoè: cánh gió
+        shoulderL: { rx: 0.72, rz: 0.3 },
+        elbowL: { rx: 0.2 },
+        shoulderR: { rx: 0.72, rz: -0.3 },
+        elbowR: { rx: 0.2 },
+        // Chân trước sau như tấn, đầu gối khuỵu
+        hipL: { rx: -0.42, rz: 0.16 },
+        kneeL: { rx: 0.58 },
+        hipR: { rx: 0.24, rz: -0.14 },
+        kneeR: { rx: 0.34 },
+      },
+    },
+    {
+      t: 1.2,
+      pose: {
+        // Nhấp nhô nhẹ: phi kiếm không bay phẳng như tàu
+        root: { rx: -0.13, py: 0.045 },
+        torso: { rx: -0.07 },
+        head: { rx: 0.11 },
+        shoulderL: { rx: 0.66, rz: 0.36 },
+        elbowL: { rx: 0.16 },
+        shoulderR: { rx: 0.66, rz: -0.36 },
+        elbowR: { rx: 0.16 },
+        hipL: { rx: -0.38, rz: 0.16 },
+        kneeL: { rx: 0.52 },
+        hipR: { rx: 0.2, rz: -0.14 },
+        kneeR: { rx: 0.3 },
+      },
+    },
+    {
+      t: 2.4,
+      pose: {
+        root: { rx: -0.16 },
+        torso: { rx: -0.1 },
+        head: { rx: 0.14 },
+        shoulderL: { rx: 0.72, rz: 0.3 },
+        elbowL: { rx: 0.2 },
+        shoulderR: { rx: 0.72, rz: -0.3 },
+        elbowR: { rx: 0.2 },
+        hipL: { rx: -0.42, rz: 0.16 },
+        kneeL: { rx: 0.58 },
+        hipR: { rx: 0.24, rz: -0.14 },
+        kneeR: { rx: 0.34 },
+      },
+    },
+  ],
+})

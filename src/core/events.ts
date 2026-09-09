@@ -62,6 +62,25 @@ export type GameEvents = {
   /** Thi triển thất bại — UI hiện lý do. */
   'skill:failed': { reason: string }
 
+  /** Lên một hoặc nhiều tầng nhỏ. */
+  'cultivation:tierUp': { realmName: string; tiers: number; x: number; y: number; z: number }
+  /** Đột phá đại cảnh giới xong. */
+  'cultivation:breakthrough': {
+    success: boolean
+    realmName: string
+    chance: number
+    x: number
+    y: number
+    z: number
+  }
+  /** Nhặt được vật phẩm. */
+  'item:pickup': { id: string; count: number }
+
+  /** Vệt gió của Ngự Kiếm Phi Hành — VFX vẽ, hệ di chuyển không biết VFX tồn tại. */
+  'flight:trail': { x: number; y: number; z: number; facing: number }
+  /** Bay lên / hạ xuống. */
+  'flight:toggle': { active: boolean }
+
   /** Sinh lực người chơi đổi — HUD nghe. */
   'player:vitals': { sinhLuc: number; maxSinhLuc: number; linhLuc: number; maxLinhLuc: number }
 }

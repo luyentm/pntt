@@ -15,6 +15,7 @@ export class DebugPanel {
     tamGiac: '0',
     material: '0',
     quai: '0',
+    canhGioi: '—',
   }
 
   constructor(private readonly game: Game) {
@@ -80,6 +81,35 @@ export class DebugPanel {
       f.add({ god: false }, 'god')
         .name('Bất tử')
         .onChange((v: boolean) => combat.setGodMode(v))
+
+      // Nhóm tu luyện: để đi hết Luyện Khí → Trúc Cơ → Kết Đan trong một phút
+      // mà kiểm tra cân bằng, thay vì cày thật mỗi lần sửa một con số
+      const tu = this.gui.addFolder('Tu luyện')
+      tu.add(this.readout, 'canhGioi').name('Cảnh giới').listen().disable()
+      tu.add({ go: () => combat.addTuVi(200) }, 'go').name('+200 Tu Vi')
+      tu.add({ go: () => combat.addTuVi(5000) }, 'go').name('+5000 Tu Vi')
+      tu.add({ go: () => combat.addTuVi(200000) }, 'go').name('+200k Tu Vi')
+      tu.add({ go: () => combat.giveItem('trucCoDan', 1) }, 'go').name('Cho Trúc Cơ Đan')
+      tu.add({ go: () => combat.giveItem('ngungDan', 1) }, 'go').name('Cho Ngưng Đan')
+      tu.add(
+        {
+          go: () => {
+            for (const [id, n] of [
+              ['thanhNguyenThao', 30],
+              ['huyetLinhChi', 20],
+              ['tinhNguyetHoa', 12],
+              ['camLinhCan', 8],
+              ['yeuDan', 24],
+              ['linhThachHa', 400],
+            ] as const) {
+              combat.giveItem(id, n)
+            }
+          },
+        },
+        'go',
+      ).name('Cho đủ nguyên liệu')
+      tu.add({ go: () => combat.jumpToMajor(2) }, 'go').name('Nhảy tới Trúc Cơ')
+      tu.add({ go: () => combat.jumpToMajor(3) }, 'go').name('Nhảy tới Kết Đan')
     }
 
     const cam = this.gui.addFolder('Camera')
@@ -109,7 +139,10 @@ export class DebugPanel {
     this.readout.tamGiac = this.game.renderer.triangles.toLocaleString('vi-VN')
     this.readout.material = String(materials.size)
     const combat = this.game.currentScene?.debug
-    if (combat) this.readout.quai = `${combat.aliveEnemyCount()} / ${combat.enemyCount()}`
+    if (combat) {
+      this.readout.quai = `${combat.aliveEnemyCount()} / ${combat.enemyCount()}`
+      this.readout.canhGioi = combat.realmLabel()
+    }
   }
 
   dispose(): void {

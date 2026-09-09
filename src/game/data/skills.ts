@@ -27,6 +27,17 @@ export type SkillAction =
       magnitudeFromThanThuc: number
     }
   | { type: 'thanPhap'; distance: number; duration: number }
+  | {
+      /** Vũ kiếm: một đàn kiếm bay vây quét quanh người thi triển. */
+      type: 'kiemVu'
+      /** Bán kính vòng quét lớn nhất. */
+      radius: number
+      /** Hệ số sát thương MỖI LẦN quét trúng, không phải tổng. */
+      mult: number
+      duration: number
+      knockback: number
+      stagger: number
+    }
 
 export interface SkillDef {
   readonly id: string
@@ -193,6 +204,34 @@ export const SKILLS: readonly SkillDef[] = [
       knockback: 0,
       stagger: 0,
       onHit: { kind: 'dongBang', duration: 1.6, magnitude: 0 },
+    },
+  },
+  {
+    id: 'thanhTrucPhongVan',
+    name: 'Thanh Trúc Phong Vân Kiếm',
+    desc: '33 thanh kiếm trúc bay vây quét quanh người. Bản mệnh pháp khí Kết Đan. Hệ Mộc.',
+    glyph: '竹',
+    requiredRealm: { major: REALM.KET_DAN, tier: 0 },
+    linhLucCost: 60,
+    cooldown: 22,
+    castTime: 0.6,
+    recover: 0.4,
+    // Còn đi được nửa tốc trong lúc kiếm quay: đây là chiêu giữ vòng, nếu đứng
+    // yên thì vòng quét không bao giờ đuổi được con quái đang chạy ra ngoài
+    moveScale: 0.5,
+    element: 'moc',
+    action: {
+      type: 'kiemVu',
+      // Vòng kiếm CHẶT quanh người, không phải một vụ nổ diện rộng: người chơi
+      // vừa đi vừa lái đàn kiếm vào giữa đám quái suốt 5 giây.
+      radius: 3,
+      // 0.55 mỗi nhịp, nhịp 0.3 giây: mục tiêu đứng trong vòng suốt chiêu ăn
+      // khoảng 8 lần hệ số công. Đắt (60 linh lực, hồi 22 giây) nên xứng, mà
+      // vẫn không xoá sạch mọi thứ trong một lần bấm.
+      mult: 0.55,
+      duration: 5,
+      knockback: 1.2,
+      stagger: 0.1,
     },
   },
 ]

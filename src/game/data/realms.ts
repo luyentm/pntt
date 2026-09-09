@@ -50,6 +50,42 @@ export const MAJOR_REALMS: readonly MajorRealm[] = [
   },
 ]
 
+/**
+ * Tu Vi cần để lên tầng KẾ TIẾP, tính từ vị trí hiện tại.
+ *
+ * Đường cong cố tình KHÔNG đều. Ba tầng đầu nhanh để người mới thấy tiến độ
+ * ngay; giữa vừa phải; ba tầng cuối của Luyện Khí là BÌNH CẢNH, chậm hẳn — đó
+ * chính là lúc người chơi phải đi tìm đan dược thay vì cứ đánh quái, và là thứ
+ * làm việc đột phá lên Trúc Cơ có sức nặng.
+ *
+ * Trả về Infinity ở tầng cuối của một đại cảnh giới: từ đó chỉ đột phá được
+ * bằng cách dùng đan dược đúng loại, không thể tích Tu Vi mà lên.
+ */
+export function tuViForNextTier(pos: RealmPosition): number {
+  const realm = majorRealm(pos.major)
+  const tier = Math.min(realm.tiers.length - 1, Math.max(0, pos.tier))
+
+  // Tầng cuối của đại cảnh giới -> phải đột phá, không tích Tu Vi mà qua được
+  if (tier >= realm.tiers.length - 1) return Number.POSITIVE_INFINITY
+
+  const scale = realm.powerBase * 22
+  // Tăng theo luỹ thừa, và có hệ số bình cảnh cho ba tầng cuối
+  const growth = Math.pow(1.42, tier)
+  const nearCap = tier >= realm.tiers.length - 4
+  const bottleneck = nearCap ? 1.9 : 1
+  return Math.round(scale * growth * bottleneck)
+}
+
+/** Tu Vi cộng dồn để đi hết một đại cảnh giới — dùng cho thanh tiến độ tổng. */
+export function tuViForMajor(major: number): number {
+  const realm = majorRealm(major)
+  let total = 0
+  for (let tier = 0; tier < realm.tiers.length - 1; tier++) {
+    total += tuViForNextTier({ major, tier })
+  }
+  return total
+}
+
 /** Chỉ số đại cảnh giới. Dùng số chứ không dùng key để so sánh cao thấp được. */
 export const REALM = {
   PHAM_NHAN: 0,

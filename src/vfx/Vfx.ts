@@ -4,6 +4,7 @@ import type { EventBus } from '@/core/EventBus'
 import type { GameEvents } from '@/core/events'
 import type { Rng } from '@/core/Rng'
 import { AreaBurstLayer } from './AreaBurst'
+import { BreakthroughFx } from './BreakthroughFx'
 import { FloatingTextLayer } from './FloatingText'
 import { ImpactShardLayer } from './ImpactShards'
 import { ShieldBubble } from './ShieldBubble'
@@ -33,6 +34,7 @@ export class Vfx {
   readonly floats: FloatingTextLayer
   readonly burst: AreaBurstLayer
   readonly shield: ShieldBubble
+  readonly breakthrough: BreakthroughFx
 
   private readonly unsubscribe: Array<() => void> = []
 
@@ -48,11 +50,13 @@ export class Vfx {
     this.floats = new FloatingTextLayer(uiRoot)
     this.burst = new AreaBurstLayer()
     this.shield = new ShieldBubble()
+    this.breakthrough = new BreakthroughFx()
 
     this.group.add(this.slash.group)
     this.group.add(this.shards.group)
     this.group.add(this.burst.group)
     this.group.add(this.shield.group)
+    this.group.add(this.breakthrough.group)
     scene.add(this.group)
 
     this.unsubscribe.push(
@@ -138,6 +142,56 @@ export class Vfx {
     )
 
     this.unsubscribe.push(
+      bus.on('flight:trail', (e) => {
+        // Vệt gió sau phi kiếm: dùng lại vệt chém nhưng dẹt, ngắn và mờ.
+        // Không viết lớp hiệu ứng mới cho nó — cùng một dải ribbon thóp hai đầu,
+        // chỉ khác tham số, nên thêm một lớp nữa chỉ để đổi ba con số là phí.
+        this.slash.spawn(e.x, e.y - 0.12, e.z, e.facing + Math.PI, 1.15, {
+          color: Palette.linh,
+          life: 0.34,
+        })
+      }),
+    )
+
+    this.unsubscribe.push(
+      bus.on('cultivation:tierUp', (e) => {
+        // Lên tầng nhỏ: hiệu ứng NHỎ có chủ ý. Nếu mỗi tầng cũng nổ cột sáng thì
+        // 13 tầng Luyện Khí sẽ làm khoảnh khắc đột phá đại cảnh giới mất thiêng.
+        this.burst.spawn(e.x, e.y, e.z, 1.8, { color: Palette.linh, life: 0.7 })
+        this.shards.burst(e.x, e.y + 0.4, e.z, this.rng, {
+          count: 12,
+          color: Palette.linh,
+          speed: 3.4,
+          size: 0.055,
+        })
+        this.floats.spawn(e.x, e.y + 1.6, e.z, e.realmName, 'heal')
+      }),
+    )
+
+    this.unsubscribe.push(
+      bus.on('cultivation:breakthrough', (e) => {
+        this.breakthrough.play(e.x, e.y, e.z, e.success)
+        this.shards.burst(e.x, e.y + 0.5, e.z, this.rng, {
+          count: e.success ? 34 : 14,
+          color: e.success ? Palette.kim : Palette.maHuyet,
+          speed: e.success ? 8.5 : 3.2,
+          size: 0.08,
+        })
+        this.floats.spawn(
+          e.x,
+          e.y + 1.9,
+          e.z,
+          e.success ? `☯ ${e.realmName}` : 'Đột phá thất bại',
+          e.success ? 'crit' : 'playerHurt',
+        )
+        this.bus.emit('camera:shake', {
+          magnitude: e.success ? 0.5 : 0.22,
+          duration: e.success ? 0.9 : 0.35,
+        })
+      }),
+    )
+
+    this.unsubscribe.push(
       bus.on('combat:death', (e) => {
         this.shards.burst(e.x, e.y + 0.35, e.z, this.rng, {
           count: 20,
@@ -163,6 +217,7 @@ export class Vfx {
   }
 
   update(dt: number, camera: PerspectiveCamera, width: number, height: number): void {
+    this.breakthrough.update(dt)
     this.slash.update(dt)
     this.shards.update(dt)
     this.burst.update(dt)
@@ -175,6 +230,7 @@ export class Vfx {
     this.shards.dispose()
     this.burst.dispose()
     this.shield.dispose()
+    this.breakthrough.dispose()
     this.floats.dispose()
     this.group.removeFromParent()
   }

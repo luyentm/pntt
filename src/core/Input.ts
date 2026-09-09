@@ -131,9 +131,13 @@ export class Input {
     return { x, z }
   }
 
-  /** Ô skill 1..6 vừa được bấm; trả -1 nếu không có. */
+  /**
+   * Ô skill vừa được bấm; trả -1 nếu không có.
+   * Quét tới 8 ô chứ không 6: cảnh giới cao mở thêm chiêu, và số ô do bảng
+   * SKILLS quyết định — input không nên là chỗ chặn nội dung.
+   */
   skillPressed(): number {
-    for (let i = 1; i <= 6; i++) {
+    for (let i = 1; i <= 8; i++) {
       if (this.pressed.has(`Digit${i}`)) return i - 1
     }
     return -1

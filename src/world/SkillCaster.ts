@@ -5,10 +5,13 @@ import { SKILLS, type SkillDef } from '@/game/data/skills'
 import { isHostile, type Combatant } from './Combatant'
 import type { CombatWorld } from './CombatWorld'
 import type { ProjectileSystem } from './Projectile'
+import type { SwordStorm } from './SwordStorm'
 
 export interface CastContext {
   world: CombatWorld
   projectiles: ProjectileSystem
+  /** Đàn kiếm bay — chỉ chiêu `kiemVu` dùng tới. */
+  swords: SwordStorm
   /** Điểm con trỏ trên mặt đất — pháp vực đặt tại đây. */
   cursorX: number
   cursorZ: number
@@ -163,6 +166,18 @@ export class SkillCaster {
     switch (def.action.type) {
       case 'phiHanh': {
         ctx.projectiles.fire(me, def.action.spec, Math.sin(me.facing), Math.cos(me.facing))
+        break
+      }
+
+      case 'kiemVu': {
+        const a = def.action
+        ctx.swords.cast(me, {
+          radius: a.radius,
+          mult: a.mult,
+          duration: a.duration,
+          knockback: a.knockback,
+          stagger: a.stagger,
+        })
         break
       }
 
