@@ -274,6 +274,43 @@ Bốn chỗ phải sửa khi nối vào:
 Đo ở đỉnh tải: **768 hạt (đầy hồ) + 55 nhân vật + đàn kiếm = 1,23 ms/khung** trên ngân
 sách 16,7 ms, 149 draw call.
 
+#### Hai dáng billboard mềm — chỗ duy nhất phá quy tắc lowpoly
+
+`haze` (cộng sáng — quầng lửa, kim quang) và `smoke` (alpha tối — khói thật). Chỉ Hoả
+Cầu và đột phá được dùng.
+
+- **Cộng sáng KHÔNG THỂ làm ra khói.** Nó chỉ cộng thêm sáng, còn khói phải che bớt —
+  thử cộng sáng với màu khói trước và ra một quầng phát sáng, đọc ra là lửa. Ngược lại
+  alpha tối không làm được quầng lửa. Một vụ nổ thật có cả hai: loé sáng rồi mới ra khói,
+  nên phải là hai hồ riêng với hai `blending` khác nhau.
+- **Texture mềm sinh bằng code** (`DataTexture` 64×64, dốc alpha `smoothstep`). Đây là
+  cách duy nhất có hạt mềm mà không phá tính chất "không một file asset nào": nó tốn
+  16 KB bộ nhớ và **không thêm một byte nào vào bundle**.
+- **`DoubleSide` là bắt buộc, không phải cho chắc.** `PlaneGeometry` hướng mặt về +Z còn
+  camera nhìn theo −Z của chính nó, nên copy quaternion camera vào billboard làm mặt
+  phẳng quay RA SAU và `FrontSide` cull sạch — hạt có trong dữ liệu, mesh `visible`, đủ
+  instance, mà trên màn hình không có gì.
+- Khói `renderOrder` 6, quầng lửa 7: khói che, quầng cộng sáng. Sai thứ tự thì quầng bị
+  khói làm mờ thay vì rực lên trên nền khói.
+- Billboard **phình ra** rồi mờ, không thu nhỏ: khói thật loang ra khi nguội, còn thu nhỏ
+  đọc ra là hút vào. Và "mờ dần" ở đây là kết quả của việc cùng một lượng sáng bị trải ra
+  diện tích lớn hơn — instance không có alpha riêng.
+
+**Chi phí, đo được:**
+
+| | ms/khung (trung vị 7 lô) |
+|---|---|
+| 768 hạt khối đặc | 3,66 |
+| + billboard (32 haze + 24 smoke) | **3,74** |
+| 768 hạt khối đặc (lô đối chứng thứ hai) | 3,86 |
+
+Hai lô đối chứng lệch 0,20 ms, lớn hơn khoảng cách 0,08 ms giữa có và không billboard —
+tức là **ở hạn mức này chi phí không đo được**. Đối chiếu với phép đo ở đầu kia: cùng 768
+hạt cùng hình học, đổi hết sang cộng sáng ở cỡ phủ kín màn hình thì đắt **gấp 2,05 lần**
+(3,31 → 6,77 ms). Kết luận: quy tắc lowpoly không đắt vì hình học — nó đắt vì **diện tích
+phủ của hạt trong suốt**, nên nới quy tắc bằng một *hạn mức phủ màn hình* là gần như miễn
+phí, còn nới bằng cách bỏ hẳn thì không.
+
 ### Chế độ trình diễn thần thông
 
 Chọn từ menu chính (*Xem thần thông*). Mở hết cảnh giới Kết Đan nên cả 7 pháp thuật,
