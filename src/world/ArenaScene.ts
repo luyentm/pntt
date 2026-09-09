@@ -1,9 +1,11 @@
 import { Mesh, Vector3, type BufferGeometry, type Object3D } from 'three'
 import { enemyDef } from '@/game/data/enemies'
 import { Hud } from '@/ui/Hud'
+import { SkillBar } from '@/ui/SkillBar'
 import { WorldBars } from '@/ui/WorldBars'
 import { Vfx } from '@/vfx/Vfx'
 import { CombatWorld } from './CombatWorld'
+import { ProjectileSystem } from './Projectile'
 import { Enemy, type EnemyContext } from './Enemy'
 import type { Combatant } from './Combatant'
 import { Palette } from '@/art/Palette'
@@ -43,6 +45,7 @@ export class ArenaScene implements GameScene {
   terrain!: Terrain
   player!: Player
   combat!: CombatWorld
+  projectiles!: ProjectileSystem
   readonly enemies: Enemy[] = []
 
   private ctx!: SceneContext
@@ -51,6 +54,7 @@ export class ArenaScene implements GameScene {
   private readonly cursor = new Vector3()
   private vfx!: Vfx
   private hud!: Hud
+  private skillBar!: SkillBar
   private bars!: WorldBars
   private enemyCtx!: EnemyContext
   private lastHp = -1
@@ -113,6 +117,8 @@ export class ArenaScene implements GameScene {
 
     this.combat = new CombatWorld(ctx.bus, rng)
     this.combat.add(this.player.combatant)
+    this.player.attachBus(ctx.bus)
+    this.projectiles = new ProjectileSystem(three, this.combat, rng)
 
     this.enemyCtx = {
       world: this.combat,
@@ -126,7 +132,13 @@ export class ArenaScene implements GameScene {
     this.vfx = new Vfx(three, uiRoot, ctx.bus, rng)
     this.hud = new Hud(uiRoot, ctx.bus)
     this.hud.setRealm(this.player.realm)
+    this.skillBar = new SkillBar(uiRoot, ctx.bus)
     this.bars = new WorldBars(uiRoot)
+
+    // Vụ nổ của phi hành khí: hệ phi hành khí không biết VFX tồn tại, chỉ gọi hook
+    this.projectiles.onExplode = (x, y, z, radius, spec) => {
+      this.vfx.spawnExplosion(x, y, z, radius, spec.element)
+    }
 
     // Vệt chém do VFX vẽ khi nghe sự kiện, nên hệ chiến đấu không biết VFX tồn tại
     ctx.bus.on('combat:swing', (e) => {
@@ -336,8 +348,9 @@ export class ArenaScene implements GameScene {
     // đặc biệt trong đường gây sát thương
     if (this.godMode) this.player.combatant.invuln = 1
 
-    this.player.fixedUpdate(dt, input, camera, this.collision, this.combat)
+    this.player.fixedUpdate(dt, input, camera, this.collision, this.combat, this.projectiles)
     for (const enemy of this.enemies) enemy.fixedUpdate(dt, this.enemyCtx)
+    this.projectiles.fixedUpdate(dt, this.collision, this.terrain)
 
     // Tách đàn SAU khi mọi thứ đã di chuyển, để không con nào bị xử lý hai lần
     this.combat.resolveCrowding()
@@ -407,6 +420,23 @@ export class ArenaScene implements GameScene {
     const h = canvas?.clientHeight ?? window.innerHeight
     this.vfx.update(frameDt, camera.camera, w, h)
     this.bars.update(frameDt, this.combat.all, camera.camera, w, h)
+    this.skillBar.update(frameDt, this.player.caster, this.player.realm, this.player.linhLuc)
+
+    // Khiên bám theo người chơi và mờ dần theo lượng còn hấp thụ được
+    const me = this.player.combatant
+    const shield = me.effects.find('khien')
+    this.vfx.shield.update(
+      frameDt,
+      shield !== undefined && !me.dead,
+      me.pos.x,
+      me.y,
+      me.pos.z,
+      // 2.05 chứ không 3.2: khiên phải bọc SÁT người. Thử 3.2 thì bóng khiên
+      // rộng 1.7 unit trùm kín cả nhân vật cao 1.1 và mấy con quái đứng cạnh —
+      // mất luôn thứ quan trọng nhất là thấy được mình và địch đang ở đâu.
+      me.radius * 2.05,
+      shield ? Math.min(1, shield.magnitude / Math.max(1, me.stats.thanThuc * 5.5)) : 0,
+    )
 
     if (this.marker) {
       if (camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.cursor, this.player.y)) {
@@ -433,8 +463,10 @@ export class ArenaScene implements GameScene {
     this.objects.length = 0
     this.collision.clear()
     this.combat.clear()
+    this.projectiles.dispose()
     this.vfx.dispose()
     this.hud.dispose()
+    this.skillBar.dispose()
     this.bars.dispose()
     this.ctx.bus.emit('scene:unloaded', { name: this.name })
   }

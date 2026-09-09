@@ -1,4 +1,5 @@
 import { MathUtils, Vector3 } from 'three'
+import { CAST } from '@/anim/clips/combat'
 import { buildChibi, chibiRadius, type Chibi } from '@/art/buildChibi'
 import type { Input } from '@/core/Input'
 import { MouseBtn } from '@/core/Input'
@@ -13,9 +14,13 @@ import {
 import type { RealmPosition } from '@/game/data/realms'
 import { deriveStats } from '@/game/Stats'
 import type { IsoCamera } from '@/render/IsoCamera'
+import type { EventBus } from '@/core/EventBus'
+import type { GameEvents } from '@/core/events'
 import type { CollisionWorld } from './Collision'
 import { Combatant } from './Combatant'
 import type { CombatWorld } from './CombatWorld'
+import type { ProjectileSystem } from './Projectile'
+import { SkillCaster } from './SkillCaster'
 import type { HeightField } from './Terrain'
 import { ChibiView } from './views'
 
@@ -58,9 +63,12 @@ function turnToward(from: number, to: number, maxStep: number): number {
 export class Player {
   readonly chibi: Chibi
   readonly combatant: Combatant
+  caster!: SkillCaster
   realm: RealmPosition = { ...START_REALM }
 
   private ground: HeightField | null = null
+  private bus: EventBus<GameEvents> | null = null
+  private readonly cursor = new Vector3()
   private vx = 0
   private vz = 0
   private speed = 0
@@ -96,6 +104,12 @@ export class Player {
     )
     this.combatant.view.showIdle()
     this.linhLuc = stats.maxLinhLuc
+  }
+
+  /** Gắn bus để thi triển pháp thuật. Phải gọi trước fixedUpdate. */
+  attachBus(bus: EventBus<GameEvents>): void {
+    this.bus = bus
+    this.caster = new SkillCaster(this.combatant, bus)
   }
 
   get pos(): { x: number; z: number } {
@@ -157,6 +171,7 @@ export class Player {
     this.comboStep = 0
     this.chainTimer = 0
     this.queuedAttack = false
+    this.caster?.reset()
   }
 
   /** Nhịp fixed 60Hz. */
@@ -166,9 +181,13 @@ export class Player {
     camera: IsoCamera,
     collision: CollisionWorld,
     world: CombatWorld,
+    projectiles: ProjectileSystem,
   ): void {
     const me = this.combatant
-    me.tickTimers(dt)
+    const dot = me.tickTimers(dt)
+    if (dot > 0) {
+      world.applyDirectDamage(me, dot, me.effects.has('thieuDot') ? 'thieuDot' : 'trungDoc')
+    }
 
     // Trường Xuân Công: hồi linh lực liên tục. Trong truyện đây chính là ưu thế
     // lớn nhất của công pháp này — tu luyện và hồi phục nhanh hơn người khác.
@@ -195,8 +214,8 @@ export class Player {
       this.queuedAttack = true
     }
 
-    if (me.stagger > 0) {
-      // Trúng đòn thì đòn đang ra bị huỷ
+    if (me.immobilized) {
+      // Trúng đòn hoặc bị đóng băng thì đòn đang ra bị huỷ
       this.phase = 'none'
       this.chainTimer = 0
       this.applyMotion(dt, 0, 0, collision)
@@ -205,10 +224,62 @@ export class Player {
     }
 
     this.updateAim(input, camera, dt)
+    this.updateSkills(dt, input, camera, world, projectiles)
     this.updateAttack(dt, world)
     this.updateMovement(dt, input, camera, collision)
 
-    if (this.phase === 'none') this.combatant.view.showMove(this.speed)
+    if (this.phase === 'none' && !this.caster.isCasting) {
+      this.combatant.view.showMove(this.speed)
+    }
+  }
+
+  /** Đọc phím 1..6 và cập nhật bộ thi triển. */
+  private updateSkills(
+    dt: number,
+    input: Input,
+    camera: IsoCamera,
+    world: CombatWorld,
+    projectiles: ProjectileSystem,
+  ): void {
+    const me = this.combatant
+    // Điểm ngắm dưới con trỏ, chiếu ở đúng cao độ chân nhân vật
+    camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.cursor, me.y)
+    const ctx = {
+      world,
+      projectiles,
+      cursorX: this.cursor.x,
+      cursorZ: this.cursor.z,
+    }
+
+    const slot = input.skillPressed()
+    if (slot >= 0) {
+      // Quay mặt về điểm ngắm TRƯỚC khi thi triển: chiêu bay theo hướng nhân vật
+      this.faceCursor()
+      const result = this.caster.tryCast(slot, this.realm, this.linhLuc, ctx)
+      if (result.ok) {
+        this.linhLuc -= result.cost
+        // Thi triển thì bỏ đòn đánh đang ra — không cho vừa chém vừa niệm chú
+        this.phase = 'none'
+        this.chainTimer = 0
+        this.queuedAttack = false
+        this.chibi.animator.clearOverlay()
+        this.chibi.animator.play(CAST, 0.06)
+        this.chibi.animator.timeScale = 1
+      } else if (this.bus) {
+        this.bus.emit('skill:failed', { reason: result.reason })
+      }
+    }
+
+    this.caster.fixedUpdate(dt, ctx)
+  }
+
+  /** Quay tức thì về điểm ngắm — dùng lúc bắt đầu thi triển pháp thuật. */
+  private faceCursor(): void {
+    const me = this.combatant
+    const dx = this.cursor.x - me.pos.x
+    const dz = this.cursor.z - me.pos.z
+    if (Math.hypot(dx, dz) < 0.3) return
+    me.facing = Math.atan2(dx, dz)
   }
 
   /** Trong lúc ra đòn thì quay theo con trỏ chuột — ngắm bằng chuột như ARPG. */
@@ -323,8 +394,9 @@ export class Player {
     const walking = input.isDown('ShiftLeft') || input.isDown('ShiftRight')
     // Ra đòn thì chậm lại chứ KHÔNG đứng hẳn: đứng hẳn làm combat cứng như
     // xem phim, còn chậm lại vẫn giữ được sức nặng của đòn đánh
-    const attackScale = this.phase === 'none' ? 1 : this.currentStep().moveScale
-    const base = this.combatant.stats.toc * (walking ? WALK_MULTIPLIER : 1)
+    const castScale = this.caster.activeSkill?.moveScale ?? 1
+    const attackScale = (this.phase === 'none' ? 1 : this.currentStep().moveScale) * castScale
+    const base = this.combatant.effectiveSpeed() * (walking ? WALK_MULTIPLIER : 1)
     const targetSpeed = inputLen > 1e-4 ? base * attackScale : 0
 
     if (inputLen > 1e-4) {
@@ -358,8 +430,14 @@ export class Player {
       this.vz -= this.vz * k
     }
 
-    me.pos.x += (this.vx + me.knockVx) * dt
-    me.pos.z += (this.vz + me.knockVz) * dt
+    // Vận tốc lướt CỘNG THÊM vào vận tốc tự chủ, không thay thế: nhờ vậy vẫn
+    // lái được hướng một chút trong lúc lướt
+    const dash = this.caster?.dash
+    const dashVx = dash?.active ? dash.vx : 0
+    const dashVz = dash?.active ? dash.vz : 0
+
+    me.pos.x += (this.vx + me.knockVx + dashVx) * dt
+    me.pos.z += (this.vz + me.knockVz + dashVz) * dt
 
     collision.resolve(me.pos, me.radius)
 

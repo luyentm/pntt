@@ -117,7 +117,8 @@ export class Enemy {
 
   fixedUpdate(dt: number, ctx: EnemyContext): void {
     const me = this.combatant
-    me.tickTimers(dt)
+    const dot = me.tickTimers(dt)
+    if (dot > 0) ctx.world.applyDirectDamage(me, dot, me.effects.has('thieuDot') ? 'thieuDot' : 'trungDoc')
 
     if (me.dead) {
       // Xác vẫn bị đẩy lùi cho nốt đà, rồi nằm im
@@ -127,9 +128,9 @@ export class Enemy {
 
     if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - dt)
 
-    // Choáng: mất điều khiển hoàn toàn, chỉ còn quán tính và đẩy lùi.
-    // Đây là thứ làm đòn đánh của người chơi "có sức nặng" — quái phải mất nhịp.
-    if (me.stagger > 0) {
+    // Choáng hoặc bị đóng băng: mất điều khiển hoàn toàn, chỉ còn quán tính và
+    // đẩy lùi. Đây là thứ làm đòn đánh của người chơi "có sức nặng".
+    if (me.immobilized) {
       if (this.state === 'windup' || this.state === 'recover') this.state = 'chase'
       this.applyMotion(dt, 0, 0, ctx)
       return
@@ -186,7 +187,7 @@ export class Enemy {
     // Tốc độ lấy từ STAT ĐÃ SUY RA, không phải từ chỉ số nền: nếu đọc chỉ số nền
     // thì mọi hiệu ứng tác động lên tốc độ (Băng Phong Phù làm chậm, buff tăng
     // tốc) đều không có tác dụng gì — một lỗi im lặng rất khó phát hiện.
-    this.steer(dt, dirX, dirZ, this.combatant.stats.toc * 0.34, ctx)
+    this.steer(dt, dirX, dirZ, this.combatant.effectiveSpeed() * 0.34, ctx)
   }
 
   private tickPursue(dt: number, ctx: EnemyContext, target: Combatant | null): void {
@@ -242,7 +243,7 @@ export class Enemy {
       }
     }
 
-    this.steer(dt, dirX, dirZ, this.combatant.stats.toc, ctx)
+    this.steer(dt, dirX, dirZ, this.combatant.effectiveSpeed(), ctx)
   }
 
   private beginAttack(): void {

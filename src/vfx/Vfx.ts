@@ -3,9 +3,21 @@ import { Palette } from '@/art/Palette'
 import type { EventBus } from '@/core/EventBus'
 import type { GameEvents } from '@/core/events'
 import type { Rng } from '@/core/Rng'
+import { AreaBurstLayer } from './AreaBurst'
 import { FloatingTextLayer } from './FloatingText'
 import { ImpactShardLayer } from './ImpactShards'
+import { ShieldBubble } from './ShieldBubble'
 import { SlashArcLayer } from './SlashArc'
+
+/** Màu theo ngũ hành — dùng cho pháp vực và vụ nổ. */
+const ELEMENT_COLOR: Record<string, number> = {
+  kim: Palette.kim,
+  moc: Palette.moc,
+  thuy: Palette.bang,
+  hoa: Palette.hoa,
+  tho: Palette.tho,
+  vo: Palette.linh,
+}
 
 /**
  * Bộ mặt của toàn bộ hiệu ứng.
@@ -19,6 +31,8 @@ export class Vfx {
   readonly slash: SlashArcLayer
   readonly shards: ImpactShardLayer
   readonly floats: FloatingTextLayer
+  readonly burst: AreaBurstLayer
+  readonly shield: ShieldBubble
 
   private readonly unsubscribe: Array<() => void> = []
 
@@ -32,9 +46,13 @@ export class Vfx {
     this.slash = new SlashArcLayer()
     this.shards = new ImpactShardLayer()
     this.floats = new FloatingTextLayer(uiRoot)
+    this.burst = new AreaBurstLayer()
+    this.shield = new ShieldBubble()
 
     this.group.add(this.slash.group)
     this.group.add(this.shards.group)
+    this.group.add(this.burst.group)
+    this.group.add(this.shield.group)
     scene.add(this.group)
 
     this.unsubscribe.push(
@@ -57,16 +75,65 @@ export class Vfx {
         else if (e.elementFactor > 1.1) text += ' ↑'
         else if (e.elementFactor < 0.9) text += ' ↓'
 
-        this.floats.spawn(
-          e.x,
-          e.y,
-          e.z,
-          text,
-          playerHit ? 'playerHurt' : e.crit ? 'crit' : 'damage',
-        )
+        // Khiên chặn hết thì hiện dạng khác hẳn: người chơi phải thấy được khiên
+        // đang làm việc, nếu không thì Kim Quang Thuẫn trông như vô dụng
+        const fullyAbsorbed = e.absorbed >= e.amount && e.absorbed > 0
+        const kind = fullyAbsorbed
+          ? 'info'
+          : playerHit
+            ? 'playerHurt'
+            : e.crit
+              ? 'crit'
+              : 'damage'
 
+        this.floats.spawn(e.x, e.y, e.z, fullyAbsorbed ? `⛨ ${e.amount}` : text, kind)
+
+        // Sát thương theo thời gian không rung camera và không bắn mảnh vỡ mạnh:
+        // nó tích tắc mỗi giây nên rung theo sẽ thành co giật liên tục
+        if (e.dot) return
         if (e.crit) this.bus.emit('camera:shake', { magnitude: 0.09, duration: 0.16 })
-        if (playerHit) this.bus.emit('camera:shake', { magnitude: 0.16, duration: 0.22 })
+        if (playerHit && e.absorbed < e.amount) {
+          this.bus.emit('camera:shake', { magnitude: 0.16, duration: 0.22 })
+        }
+      }),
+    )
+
+    this.unsubscribe.push(
+      bus.on('skill:area', (e) => {
+        const color = ELEMENT_COLOR[e.element] ?? Palette.linh
+        const isLightning = e.skillId === 'thienLoiPhu'
+        this.burst.spawn(e.x, e.y, e.z, e.radius, {
+          color,
+          life: isLightning ? 0.42 : 0.6,
+          pillar: isLightning,
+          pillarHeight: e.radius * 4.5,
+        })
+        this.shards.burst(e.x, e.y + 0.3, e.z, this.rng, {
+          count: isLightning ? 16 : 12,
+          color,
+          speed: isLightning ? 6.5 : 4,
+          size: 0.06,
+        })
+        if (isLightning) {
+          this.bus.emit('camera:shake', { magnitude: 0.28, duration: 0.3 })
+        }
+      }),
+    )
+
+    this.unsubscribe.push(
+      bus.on('skill:buff', (e) => {
+        this.burst.spawn(e.x, e.y, e.z, 1.4, { color: Palette.kim, life: 0.45 })
+        this.floats.spawn(e.x, e.y + 1.4, e.z, `⛨ ${e.magnitude}`, 'info')
+      }),
+    )
+
+    this.unsubscribe.push(
+      bus.on('skill:dash', (e) => {
+        // Vệt gió: dùng chính vệt chém nhưng dẹt và mờ, màu linh khí
+        this.slash.spawn(e.x, e.y + 0.45, e.z, e.facing, e.distance * 0.55, {
+          color: Palette.linh,
+          life: 0.3,
+        })
       }),
     )
 
@@ -87,9 +154,18 @@ export class Vfx {
     this.slash.spawn(x, y + 0.5, z, facing, radius, { color: color ?? Palette.linh })
   }
 
+  /** Vụ nổ của phi hành khí — ProjectileSystem gọi qua hook onExplode. */
+  spawnExplosion(x: number, y: number, z: number, radius: number, element: string): void {
+    const color = ELEMENT_COLOR[element] ?? Palette.hoa
+    this.burst.spawn(x, y - 0.4, z, radius, { color, life: 0.55 })
+    this.shards.burst(x, y, z, this.rng, { count: 18, color, speed: 6, size: 0.07 })
+    this.bus.emit('camera:shake', { magnitude: 0.14, duration: 0.2 })
+  }
+
   update(dt: number, camera: PerspectiveCamera, width: number, height: number): void {
     this.slash.update(dt)
     this.shards.update(dt)
+    this.burst.update(dt)
     this.floats.update(dt, camera, width, height)
   }
 
@@ -97,6 +173,8 @@ export class Vfx {
     for (const off of this.unsubscribe) off()
     this.slash.dispose()
     this.shards.dispose()
+    this.burst.dispose()
+    this.shield.dispose()
     this.floats.dispose()
     this.group.removeFromParent()
   }

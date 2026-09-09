@@ -65,6 +65,26 @@ export interface RealmPosition {
   tier: number
 }
 
+/**
+ * Số thứ tự tuyệt đối của một cảnh giới trong toàn thang.
+ * Cần để so sánh cao thấp qua các đại cảnh giới bằng một phép so sánh số duy nhất
+ * (ví dụ: kiểm tra đã đủ cảnh giới để mở một pháp thuật).
+ */
+export function realmOrdinal(pos: RealmPosition): number {
+  let n = 0
+  const major = Math.min(MAJOR_REALMS.length - 1, Math.max(0, pos.major))
+  for (let i = 0; i < major; i++) n += (MAJOR_REALMS[i] as MajorRealm).tiers.length
+  const realm = MAJOR_REALMS[major] as MajorRealm
+  return n + Math.min(realm.tiers.length - 1, Math.max(0, pos.tier))
+}
+
+/** Tổng số tầng của toàn thang — dùng cho thanh tiến độ tổng. */
+export function totalTiers(): number {
+  let n = 0
+  for (const r of MAJOR_REALMS) n += r.tiers.length
+  return n
+}
+
 export function majorRealm(major: number): MajorRealm {
   const clamped = Math.min(MAJOR_REALMS.length - 1, Math.max(0, major))
   return MAJOR_REALMS[clamped] as MajorRealm

@@ -151,13 +151,29 @@ export class CombatWorld {
 
   /** Mục tiêu địch gần nhất trong tầm. */
   nearestHostile(from: Combatant, radius: number): Combatant | null {
+    return this.nearestHostileAt(from.pos.x, from.pos.z, from.side, radius, from)
+  }
+
+  /**
+   * Địch gần nhất tính từ một TOẠ ĐỘ bất kỳ.
+   * Cần cho phi hành khí truy kích: nó phải tìm từ vị trí của viên đạn, không
+   * phải từ vị trí người bắn.
+   */
+  nearestHostileAt(
+    x: number,
+    z: number,
+    side: Side,
+    radius: number,
+    exclude?: Combatant,
+  ): Combatant | null {
+    const from = { pos: { x, z } }
     const found = this.scratch
     const count = this.queryCircle(
-      from.pos.x,
-      from.pos.z,
+      x,
+      z,
       radius,
       found,
-      (c) => c !== from && c.alive && isHostile(from.side, c.side),
+      (c) => c !== exclude && c.alive && isHostile(side, c.side),
     )
     let best: Combatant | null = null
     let bestDist = Infinity
@@ -202,7 +218,14 @@ export class CombatWorld {
     if (target.dead || target.invuln > 0) return null
 
     const result = computeDamage(attacker, target, skillMult, this.rng)
-    target.hp -= result.amount
+
+    // Khiên hấp thụ TRƯỚC khi trừ máu. Phần bị hấp thụ vẫn hiện lên như một con
+    // số, nhưng màu khác — người chơi phải thấy được khiên đang làm việc, nếu
+    // không thì Kim Quang Thuẫn trông như không có tác dụng gì.
+    const throughShield = target.effects.absorb(result.amount)
+    const absorbed = result.amount - throughShield
+
+    target.hp -= throughShield
     target.invuln = options.invuln ?? 0.08
 
     const knockback = options.knockback ?? 0
@@ -219,6 +242,7 @@ export class CombatWorld {
       y: target.centerY(),
       z: target.pos.z,
       amount: result.amount,
+      absorbed,
       crit: result.crit,
       elementFactor: result.elementFactor,
       realmFactor: result.realmFactor,
@@ -243,6 +267,43 @@ export class CombatWorld {
     }
 
     return result
+  }
+
+  /**
+   * Gây sát thương THUẦN, không qua công thức và không bị khiên chặn.
+   * Dùng cho sát thương theo thời gian (thiêu đốt, trúng độc): lượng đã được
+   * quyết định lúc áp trạng thái, tính lại theo công thức ở đây sẽ nhân đôi
+   * ảnh hưởng của ngũ hành và chênh cảnh giới.
+   */
+  applyDirectDamage(target: Combatant, amount: number, kind: 'thieuDot' | 'trungDoc'): void {
+    if (target.dead || amount <= 0) return
+    target.hp -= amount
+    this.bus.emit('combat:hit', {
+      x: target.pos.x,
+      y: target.centerY(),
+      z: target.pos.z,
+      amount: Math.round(amount),
+      absorbed: 0,
+      crit: false,
+      elementFactor: 1,
+      realmFactor: 1,
+      targetSide: target.side,
+      dot: kind,
+    })
+    if (target.hp <= 0) {
+      target.hp = 0
+      target.dead = true
+      target.deadFor = 0
+      target.stagger = 0
+      target.effects.clear()
+      target.view.showDie()
+      this.bus.emit('combat:death', {
+        side: target.side,
+        x: target.pos.x,
+        y: target.y,
+        z: target.pos.z,
+      })
+    }
   }
 
   /**

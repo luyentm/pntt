@@ -227,3 +227,132 @@ html, body {
 .hud-bar--mp .hud-bar-label {
   font-size: 9.5px;
 }
+
+/* ---------- Thanh pháp thuật ---------- */
+.skillbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 7px;
+}
+
+.skill {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 5px;
+  background: rgba(14, 17, 22, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 226, 208, 0.2),
+    0 3px 12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  cursor: default;
+  transition: box-shadow 0.15s ease;
+}
+
+.skill-glyph {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 25px;
+  line-height: 1;
+  color: var(--lua);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.skill-key {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: rgba(232, 226, 208, 0.62);
+}
+
+.skill-cost {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--lam);
+}
+
+/* Lớp phủ hồi chiêu quét từ dưới lên */
+.skill-cd {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 0;
+  background: rgba(8, 10, 14, 0.74);
+  pointer-events: none;
+}
+
+.skill.is-locked .skill-glyph {
+  color: rgba(232, 226, 208, 0.22);
+}
+.skill.is-locked {
+  box-shadow: inset 0 0 0 1px rgba(232, 226, 208, 0.08);
+}
+.skill.is-locked .skill-cost {
+  color: rgba(91, 143, 199, 0.3);
+}
+
+.skill.is-poor .skill-cost {
+  color: var(--huyet);
+}
+.skill.is-poor .skill-glyph {
+  color: rgba(232, 226, 208, 0.45);
+}
+
+.skill.is-active {
+  box-shadow:
+    inset 0 0 0 1px var(--kim),
+    0 0 14px rgba(217, 177, 84, 0.55);
+}
+
+/* Tên chiêu chỉ hiện khi trỏ vào — bình thường không chiếm chỗ */
+.skill-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 7px);
+  transform: translateX(-50%);
+  padding: 4px 9px;
+  border-radius: 4px;
+  background: rgba(10, 12, 16, 0.94);
+  box-shadow: 0 0 0 1px rgba(232, 226, 208, 0.16);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.skill:hover .skill-tip {
+  opacity: 1;
+}
+
+.skill-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 88px;
+  transform: translate(-50%, 6px);
+  padding: 6px 14px;
+  border-radius: 4px;
+  background: rgba(10, 12, 16, 0.9);
+  box-shadow: 0 0 0 1px rgba(196, 84, 63, 0.5);
+  font-size: 12.5px;
+  color: #f0d0c4;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+}
+
+.skill-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}

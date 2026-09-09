@@ -248,3 +248,60 @@ export const DIE: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
     },
   ],
 })
+
+/**
+ * Niệm chú / dẫn khí: hai tay chắp trước ngực rồi đẩy ra.
+ * Là clip TOÀN THÂN vì thi triển pháp thuật phải thấy rõ là đang làm việc khác
+ * hẳn với chém — nếu chỉ phủ thân trên thì chân vẫn chạy và mất hết sức nặng.
+ */
+export const CAST: Clip<ChibiJoint> = compileClip(CHIBI_RIG, {
+  name: 'cast',
+  duration: 0.52,
+  loop: false,
+  frames: [
+    {
+      t: 0,
+      pose: {
+        torso: { rx: -0.12 },
+        head: { rx: -0.06 },
+        // Chắp tay trước ngực
+        shoulderL: { rx: -0.95, rz: -0.55 },
+        elbowL: { rx: -1.15 },
+        shoulderR: { rx: -0.95, rz: 0.55 },
+        elbowR: { rx: -1.15 },
+        kneeL: { rx: 0.18 },
+        kneeR: { rx: 0.18 },
+        hip: { py: -0.03 },
+      },
+    },
+    {
+      t: 0.2,
+      pose: {
+        // Đẩy hai tay ra trước, người hơi ngả về sau vì phản lực
+        torso: { rx: -0.26 },
+        head: { rx: -0.1 },
+        shoulderL: { rx: -1.45, rz: -0.16 },
+        elbowL: { rx: -0.14 },
+        shoulderR: { rx: -1.45, rz: 0.16 },
+        elbowR: { rx: -0.14 },
+        kneeL: { rx: 0.24 },
+        kneeR: { rx: 0.24 },
+        hip: { py: -0.045, pz: -0.04 },
+      },
+    },
+    {
+      t: 0.52,
+      pose: {
+        torso: { rx: 0 },
+        head: { rx: 0 },
+        shoulderL: { rx: -0.1, rz: 0 },
+        elbowL: { rx: -0.3 },
+        shoulderR: { rx: -0.1, rz: 0 },
+        elbowR: { rx: -0.3 },
+        kneeL: { rx: 0 },
+        kneeR: { rx: 0 },
+        hip: { py: 0, pz: 0 },
+      },
+    },
+  ],
+})

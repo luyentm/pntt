@@ -73,16 +73,31 @@ class MaterialCache {
     return m
   }
 
-  /** Không nhận sáng — dùng cho VFX phát sáng, mắt, và mọi thứ cần rực lên qua bloom. */
-  glow(color: ColorRepresentation, opacity = 1): MeshBasicMaterial {
-    const k = this.key('glow', color, { opacity, transparent: opacity < 1 })
+  /**
+   * Không nhận sáng — dùng cho VFX phát sáng, mắt, và mọi thứ cần rực lên qua bloom.
+   *
+   * `toneMapped: false` là điều kiện BẮT BUỘC để bloom bắt được: tone mapping
+   * ACES kéo mọi màu về dưới ngưỡng luminance của bloom, nên vật sáng đi qua nó
+   * sẽ không bao giờ rực lên.
+   */
+  glow(
+    color: ColorRepresentation,
+    opacity = 1,
+    o: { vertexColors?: boolean } = {},
+  ): MeshBasicMaterial {
+    const k = this.key('glow', color, {
+      opacity,
+      transparent: opacity < 1,
+      vertexColors: o.vertexColors,
+    })
     let m = this.cache.get(k) as MeshBasicMaterial | undefined
     if (!m) {
       m = new MeshBasicMaterial({
         color,
         transparent: opacity < 1,
         opacity,
-        toneMapped: false, // giữ nguyên độ chói để bloom bắt được
+        toneMapped: false,
+        vertexColors: o.vertexColors ?? false,
       })
       this.cache.set(k, m)
     }

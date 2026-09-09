@@ -1,6 +1,9 @@
 import type { Group } from 'three'
 import type { RealmPosition } from '@/game/data/realms'
+import { EffectSet } from '@/game/Effects'
 import type { CombatStats } from '@/game/Stats'
+
+let nextCombatantId = 1
 
 export type Side = 'player' | 'ally' | 'enemy'
 
@@ -38,6 +41,11 @@ export interface CombatantView {
  * thường, nên một lớp có kiểu rõ ràng đọc và gỡ lỗi dễ hơn hẳn một world ECS.
  */
 export class Combatant {
+  /** Id duy nhất — dùng để quy nguồn cho trạng thái và tránh tự cộng dồn. */
+  readonly id = nextCombatantId++
+  /** Khiên, làm chậm, thiêu đốt... */
+  readonly effects = new EffectSet()
+
   /** Vị trí trên mặt phẳng. Object riêng để truyền thẳng vào CollisionWorld.resolve. */
   readonly pos = { x: 0, z: 0 }
   y = 0
@@ -105,8 +113,21 @@ export class Combatant {
     this.knockVz += (dirZ / len) * force
   }
 
-  /** Giảm dần đẩy lùi và các bộ đếm. Gọi mỗi bước fixed. */
-  tickTimers(dt: number): void {
+  /** Tốc độ di chuyển sau khi tính trạng thái (làm chậm, đóng băng). */
+  effectiveSpeed(): number {
+    return this.stats.toc * this.effects.speedMultiplier()
+  }
+
+  /** Mất điều khiển vì choáng hoặc bị đóng băng. */
+  get immobilized(): boolean {
+    return this.stagger > 0 || this.effects.isImmobilized()
+  }
+
+  /**
+   * Giảm dần đẩy lùi và các bộ đếm. Gọi mỗi bước fixed.
+   * Trả về sát thương theo thời gian cần gây trong bước này (0 nếu không có).
+   */
+  tickTimers(dt: number): number {
     if (this.stagger > 0) this.stagger = Math.max(0, this.stagger - dt)
     if (this.invuln > 0) this.invuln = Math.max(0, this.invuln - dt)
     if (this.dead) this.deadFor += dt
@@ -118,6 +139,13 @@ export class Combatant {
     this.knockVz *= damp
     if (Math.abs(this.knockVx) < 0.01) this.knockVx = 0
     if (Math.abs(this.knockVz) < 0.01) this.knockVz = 0
+
+    // Xác không còn chịu trạng thái nào nữa
+    if (this.dead) {
+      this.effects.clear()
+      return 0
+    }
+    return this.effects.tick(dt)
   }
 
   get root(): Group {

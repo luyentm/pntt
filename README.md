@@ -29,7 +29,7 @@ Mở http://localhost:5173
 | WASD / phím mũi tên | Di chuyển (theo hướng camera) |
 | Chuột trái (hoặc `J`) | Chém — bấm liên tiếp để nối combo 3 nhát. Giữ để chém liên tục |
 | Giữ Shift | Đi chậm |
-| `1`–`6` | Pháp thuật *(từ M4)* |
+| `1`–`6` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù |
 
 ## Kiến trúc
 
@@ -125,6 +125,21 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   zig-zag khi kẹt giữa hai vật và hội tụ rất chậm.
 - Đòn đánh của người là **lớp phủ** chỉ trên thân trên, nên chân vẫn giữ chu kỳ
   chạy → đánh được trong lúc di chuyển. Thú vồ bằng cả người nên dùng clip toàn thân.
+- Lọc mục tiêu PHẢI dùng `isHostile()`, không phải `c.side !== me.side`. Với người
+  chơi thì `'ally' !== 'player'` là true, nên phép so sánh thô biến mọi pháp vực và
+  phi hành khí thành đánh cả đồng môn — ở đại chiến thì người chơi tự diệt quân mình.
+  (Bug này đã có thật, test bắt được, giờ đã khoá bằng test riêng.)
+- Điểm ngắm của pháp vực được **CHỐT lúc bấm**, không đọc lại lúc chiêu phát. Đọc
+  lại thì rê chuột trong lúc dẫn khí sẽ làm chiêu đi theo chuột và cảm giác điều
+  khiển trơn tuột, mất hết sức nặng.
+- Ngắm quá xa thì **kẹp về tầm tối đa**, không huỷ chiêu — mất chiêu đọc ra là
+  "game không nhận input".
+- Sát thương theo thời gian gây theo **nhịp giây**, không rải mỗi frame: 60 con số
+  "0.4" mỗi giây thì không ai đọc nổi.
+- Trạng thái chồng nhau thì **giữ mạnh hơn**, không cộng dồn — cộng dồn khiến một
+  chiêu làm chậm bắn liên tục đóng băng mục tiêu vĩnh viễn.
+- `toneMapped: false` là điều kiện BẮT BUỘC để bloom bắt được vật sáng; tone mapping
+  ACES kéo mọi màu về dưới ngưỡng luminance.
 - Có **hỗ trợ ngắm mềm** (nửa góc 60°): ngắm hoàn toàn theo con trỏ rất dễ trượt
   khi tay đang bấm WASD, và một nhát trượt vì lệch 10° đọc ra là "game không nhận
   input" chứ không phải "mình ngắm sai".
@@ -147,7 +162,7 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - [x] **M1** Hàn Lập chibi + di chuyển — rig xương, clip idle/walk/run, controller theo hướng camera, va chạm
 - [x] **M2** Map sơn môn — terrain noise, cổng phái, đèn đá, đài luyện đan, rừng tùng + khóm tre (instanced)
 - [x] **M3** Combat cơ bản — combo 3 nhát, hitbox hình quạt, AI quái, thanh máu, HUD, VFX
-- [ ] **M4** Pháp thuật & VFX
+- [x] **M4** Pháp thuật & VFX — 6 chiêu, phi hành khí, trạng thái (khiên/băng/thiêu), thanh pháp thuật
 - [ ] **M5** Tu luyện & đột phá cảnh giới
 - [ ] **M6** Vật phẩm, túi đồ, luyện đan
 - [ ] **M7** Tướng & đại chiến
