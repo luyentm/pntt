@@ -29,6 +29,17 @@ jobs:
           node-version: 22
           cache: npm
 
+      # `enablement: true` chuyển Pages của repo sang chế độ "GitHub Actions".
+      #
+      # Cần vì mặc định repo đang ở chế độ "Deploy from a branch" (main, gốc), và
+      # ở chế độ đó Pages phục vụ MÃ NGUỒN chưa build: index.html trỏ vào
+      # ./src/main.ts, mà TypeScript thì trình duyệt không chạy được. Bước này
+      # chạy TRƯỚC build để nếu không đủ quyền thì workflow đỏ ngay, thay vì build
+      # xong rồi mới chết ở bước deploy.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       # `npm ci` chứ không `npm install`: cài đúng theo package-lock nên bản
       # deploy dùng chính những phiên bản đã chạy test ở máy
       - run: npm ci
@@ -41,7 +52,6 @@ jobs:
       # typecheck riêng
       - run: npm run build
 
-      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
