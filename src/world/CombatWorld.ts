@@ -30,7 +30,13 @@ export class CombatWorld {
   private readonly scratch: Combatant[] = []
 
   constructor(
-    private readonly bus: EventBus<GameEvents>,
+    /**
+     * Công khai chứ không private: các hệ thống chiến đấu khác (đòn quét của
+     * tướng, đàn kiếm) cần phát sự kiện cho VFX, và chúng đã cầm CombatWorld
+     * rồi — bắt chúng nhận thêm một tham số `bus` chỉ để làm đúng việc đó là
+     * thêm dây nối mà không thêm thông tin.
+     */
+    readonly bus: EventBus<GameEvents>,
     private readonly rng: Rng,
   ) {}
 

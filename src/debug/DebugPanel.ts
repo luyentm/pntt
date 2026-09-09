@@ -16,6 +16,7 @@ export class DebugPanel {
     material: '0',
     quai: '0',
     canhGioi: '—',
+    dot: '—',
   }
 
   constructor(private readonly game: Game) {
@@ -116,6 +117,13 @@ export class DebugPanel {
       ).name('Cho đủ nguyên liệu')
       tu.add({ go: () => combat.jumpToMajor(2) }, 'go').name('Nhảy tới Trúc Cơ')
       tu.add({ go: () => combat.jumpToMajor(3) }, 'go').name('Nhảy tới Kết Đan')
+
+      const tran = this.gui.addFolder('Thủ trận')
+      tran.add(this.readout, 'dot').name('Đợt').listen().disable()
+      tran.add({ go: () => combat.startWave() }, 'go').name('Khởi trận (Enter)')
+      for (const w of [1, 2, 3, 4, 5, 6]) {
+        tran.add({ go: () => combat.jumpToWave(w - 1) }, 'go').name(`Nhảy tới đợt ${w}`)
+      }
     }
 
     const cam = this.gui.addFolder('Camera')
@@ -148,6 +156,7 @@ export class DebugPanel {
     if (combat) {
       this.readout.quai = `${combat.aliveEnemyCount()} / ${combat.enemyCount()}`
       this.readout.canhGioi = combat.realmLabel()
+      this.readout.dot = combat.waveLabel()
     }
   }
 

@@ -35,6 +35,7 @@ Mở http://localhost:5173
 | `B` | Đột phá đại cảnh giới (vào màn thử dẫn khí) |
 | `Space` | Ngự Kiếm Phi Hành — bật/tắt, mở ở Trúc Cơ |
 | `C` / `I` / `K` | Bảng Tu Luyện / Túi Đồ / Luyện Đan (`Esc` đóng) |
+| `Enter` | Khởi trận — mở đợt kế tiếp của "Thất Huyền Môn thủ trận" |
 
 Trong màn thử dẫn khí: bấm `Space` mỗi khi con trỏ đi vào vùng sáng.
 
@@ -45,7 +46,7 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
 - **Không có asset ngoài nào.** Không texture, không `.glb`, không file âm thanh.
   Model chibi và prop được **sinh bằng code** từ khối cơ bản + vertex color;
   animation là rig `Group` lồng nhau (không xương); âm thanh sinh bằng WebAudio.
-  Bundle ~206 KB gz, load tức thì, chạy offline.
+  Bundle ~211 KB gz, load tức thì, chạy offline.
 - **Vòng lặp fixed-timestep 60Hz + nội suy** (`core/Loop.ts`) — combat và AI xác định,
   không phụ thuộc fps. Số lần **vẽ** khoá ở 60 fps mặc định (`loop.fpsCap`), đổi được
   trong bảng debug → *Hình ảnh → Giới hạn fps*.
@@ -183,6 +184,57 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
 
+### M7 — tướng và đại chiến
+
+- **Đợt sau KHÔNG tự chạy tiếp — phải người chơi bấm `Enter`.** Giữa hai đợt là lúc
+  toạ thiền, luyện đan và đột phá; nếu đợt tự tới thì cả vòng lặp tu luyện của M5 bị
+  chen ngang và người chơi buộc phải đánh với cảnh giới đang có thay vì được chuẩn bị.
+- Điều kiện dẹp xong đợt chỉ đếm quái **có cờ `waveTag`**. Đếm hết mọi con thì một
+  con yêu thử nền lang thang ở rìa bản đồ sẽ khoá cứng cả đợt.
+- Bộ điều phối đợt có cờ **"đã thấy quái"**. Nó chuyển sang `fighting` trong cùng lời
+  gọi đã yêu cầu sinh quái, còn màn thì đếm số quái sống *trước* lời gọi đó — không
+  chặn thì con số 0 cũ của bước trước làm đợt tự dẹp ngay khoảnh khắc vừa sinh, và cả
+  6 đợt chạy hết trong hai giây mà không con quái nào kịp xuất hiện (test bắt được).
+- `WaveDirector` **không cầm scene, không cầm three, không sinh gì** — nó đọc hai con
+  số (còn mấy con sống, người chơi chết chưa) và gọi yêu cầu qua `WaveActions`. Nhờ vậy
+  chạy hết 6 đợt trong test mà không cần đồ hoạ.
+- Bị hạ giữa đợt thì đợt **thất bại và làm lại**, quái của đợt cũ bị dọn sạch. Để lại
+  thì người chơi vừa hồi sinh đã bị cả đợt cũ vây và không bao giờ gỡ lại được. Và dọn
+  bằng cách đặt cờ `dead` chứ không qua `strike()` — qua `strike()` là cho Tu Vi miễn
+  phí mỗi lần chết.
+- **Cùng một `Agent` chạy cho cả ma đạo và đệ tử Thất Huyền Môn**; phe được quyết định
+  lúc SINH, không nằm trong dữ liệu. Mọi chỗ chọn mục tiêu đều đi qua `isHostile`, nên
+  không có một nhánh `if` nào cho riêng đồng minh. "Đệ tử đi theo người chơi" cũng
+  không thêm trạng thái nào — chỉ là hành vi lảng vảng quanh nhà, với cái nhà biết đi.
+- `grantRewards` phải **lọc `side !== 'enemy'`**. Không có dòng đó thì từ lúc có đồng
+  môn, mỗi đệ tử tử trận lại rơi linh thảo và cho người chơi Tu Vi — vừa sai về nghĩa,
+  vừa biến "để đồng môn chết" thành một cách farm.
+- **Phase của tướng là hệ số nhân chồng lên máy trạng thái đã có**, không phải một AI
+  thứ hai. Và phase chỉ đi MỘT CHIỀU: cho lùi thì một lần hồi máu sẽ gọi thêm một lượt
+  tay sai nữa, sân đấu đầy quái mà người chơi không hiểu vì sao.
+- Tay sai của tướng **có** tính vào đợt. Không tính thì hạ tướng xong là đợt kết thúc
+  mà lũ tay sai còn lại vẫn đứng đó đánh mãi.
+- Thanh máu tướng hiện **vạch mốc phase** đúng tại `atHp`. Ẩn đi thì mỗi lần đổi phase
+  chỉ là một điều bất ngờ khó chịu; hiện ra thì nó thành một cái hẹn, và người chơi
+  biết dồn sát thương hay giữ chiêu.
+- Đơn vị đánh xa **không gọi `announceSwing`** — vệt chém ở đó sẽ nói dối người chơi
+  rằng vừa có một đòn cận chiến, trong khi thứ đang bay tới là một lá phù.
+- Trạng thái của đòn đánh chỉ dán khi mục tiêu **còn sống**; dán độc lên một cái xác
+  thì DoT sẽ tích tắc trên xác suốt lúc diễn cảnh chết.
+- Lớp quân hậu cảnh **không có AI, không va chạm, không gây sát thương** và tách hẳn
+  khỏi `Agent`: cảm giác đại chiến đến từ số lượng NHÌN THẤY, còn chiến đấu thật chỉ
+  cần vài chục đơn vị quanh người chơi. Nuôi 200 `Agent` đầy đủ để chúng đánh nhau ở
+  nơi người chơi không tới được là trả giá mô phỏng cho một thứ không ai tương tác.
+  Mỗi phe một `InstancedMesh` → cả đám đông tốn đúng **2 draw call**.
+- Quân hậu cảnh đánh theo **CẶP**, và rải trên **cung hẹp vòng 32–43**. Hai hình lao
+  vào nhau rồi lùi ra đọc ra là giao tranh, còn một đám di chuyển ngẫu nhiên chỉ đọc ra
+  là một cái chợ. Rải thưa trên nửa vòng 34–52 thì từ trong sân chỉ thấy vài cái đốm —
+  cảm giác đại chiến đến từ **mật độ**, không từ diện tích.
+- Vũ khí của quân hậu cảnh dày **0.1** chứ không 0.05: ở khoảng cách 35 unit thì 0.05
+  unit không chiếm nổi một pixel, nên cái lát mỏng đó vừa vô hình vừa vẫn tốn tam giác.
+- BSD `sed` trên macOS **không hỗ trợ `\b`** — các mẫu đổi tên định danh im lặng không
+  khớp mà vẫn trả về mã 0. Đổi tên hàng loạt thì dùng Python, đừng dùng `sed`.
+
 ### M5 + M6 — tu luyện và vật phẩm
 
 - **Đột phá thất bại KHÔNG tụt đại cảnh giới và không chết** — chỉ mất Tu Vi, tụt một
@@ -252,5 +304,7 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - [x] **M5+M6** Tu luyện, đột phá, vật phẩm — 13 tầng Luyện Khí, toạ thiền, Tiểu Bình,
       màn thử dẫn khí + `BreakthroughFx`, Trúc Cơ → Ngự Kiếm Phi Hành, Kết Đan → 33 kiếm trúc,
       drop table, túi đồ, luyện đan, ba bảng UI
-- [ ] **M7** Tướng & đại chiến
+- [x] **M7** Tướng & đại chiến — bộ điều phối 6 đợt, đệ tử đồng môn AI, lớp quân hậu cảnh
+      instanced, Ma Đạo Trúc Cơ (bài học chênh cảnh giới), Mặc Đại Phu 3 phase, thanh máu
+      tướng, thắng/thua
 - [ ] **M8** Hoàn thiện

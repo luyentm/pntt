@@ -41,6 +41,11 @@ export interface SceneDebugActions {
   /** Nhảy thẳng tới một đại cảnh giới, bỏ qua đan dược và phép roll. */
   jumpToMajor(major: number): void
   realmLabel(): string
+  /** Mở đợt kế tiếp của chế độ thủ trận. */
+  startWave(): void
+  /** Nhảy tới một đợt cụ thể (0-based) để thử cân bằng đợt đó. */
+  jumpToWave(index: number): void
+  waveLabel(): string
 }
 
 export interface GameScene {

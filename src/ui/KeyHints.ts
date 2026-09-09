@@ -16,6 +16,7 @@ const HINTS: ReadonlyArray<[string, string]> = [
   ['I', 'túi đồ'],
   ['K', 'luyện đan'],
   ['B', 'đột phá'],
+  ['Enter', 'khởi trận'],
 ]
 
 export class KeyHints {

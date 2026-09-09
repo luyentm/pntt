@@ -1,27 +1,31 @@
 import { Mesh, Vector3, type BufferGeometry, type Object3D } from 'three'
 import { canCraft, craft } from '@/game/Alchemy'
+import { WaveDirector, type WaveActions } from '@/game/WaveDirector'
 import { BreakthroughTrial, type TrialOutcome } from '@/game/BreakthroughTrial'
-import { enemyDef } from '@/game/data/enemies'
+import { unitDef, type BossPhase } from '@/game/data/units'
 import { rollDrops, tuViReward } from '@/game/data/dropTables'
 import { itemDef } from '@/game/data/items'
 import { majorRealm } from '@/game/data/realms'
 import { recipeById } from '@/game/data/recipes'
+import { BossBar } from '@/ui/BossBar'
 import { Hud } from '@/ui/Hud'
 import { KeyHints } from '@/ui/KeyHints'
 import { SkillBar } from '@/ui/SkillBar'
 import { TrialOverlay } from '@/ui/TrialOverlay'
+import { WaveBanner } from '@/ui/WaveBanner'
 import { WorldBars } from '@/ui/WorldBars'
 import { AlchemyPanel, type AlchemyHost } from '@/ui/panels/AlchemyPanel'
 import { CultivationPanel, type CultivationHost } from '@/ui/panels/CultivationPanel'
 import { InventoryPanel, type InventoryHost } from '@/ui/panels/InventoryPanel'
 import type { Panel } from '@/ui/panels/Panel'
 import { Vfx } from '@/vfx/Vfx'
+import { Crowd } from './Crowd'
 import { PickupSystem } from './Pickups'
 import { SwordStorm } from './SwordStorm'
 import { CombatWorld } from './CombatWorld'
 import { ProjectileSystem } from './Projectile'
-import { Enemy, type EnemyContext } from './Enemy'
-import type { Combatant } from './Combatant'
+import { Agent, type AgentContext } from './Agent'
+import type { Combatant, Side } from './Combatant'
 import { Palette } from '@/art/Palette'
 import { PropBatch } from '@/art/PropBatch'
 import { buildBoulder, buildGroundMarker, buildStoneFloor } from '@/art/props/nature'
@@ -60,11 +64,13 @@ export class ArenaScene implements GameScene {
   player!: Player
   combat!: CombatWorld
   projectiles!: ProjectileSystem
-  readonly enemies: Enemy[] = []
+  readonly agents: Agent[] = []
 
   pickups!: PickupSystem
   /** Thanh Trúc Phong Vân Kiếm — 33 thanh trong một InstancedMesh. */
   swords!: SwordStorm
+  /** Bộ điều phối "Thất Huyền Môn thủ trận". */
+  readonly director = new WaveDirector()
 
   private ctx!: SceneContext
   private readonly objects: Object3D[] = []
@@ -75,7 +81,7 @@ export class ArenaScene implements GameScene {
   private skillBar!: SkillBar
   private bars!: WorldBars
   private hints!: KeyHints
-  private enemyCtx!: EnemyContext
+  private agentCtx!: AgentContext
   private lastHp = -1
   private lastMp = -1
   private respawnTimer = 0
@@ -98,19 +104,62 @@ export class ArenaScene implements GameScene {
    */
   private readonly rewarded = new Set<number>()
 
+  private crowd!: Crowd
+  private bossBar!: BossBar
+  private banner!: WaveBanner
+  /** Tướng của đợt hiện tại, nếu đang có. */
+  private boss: Agent | null = null
+  private readonly waveActions: WaveActions = {
+    spawnGroup: (group) => {
+      for (let i = 0; i < group.count; i++) {
+        const p = this.ctx.rng.inAnnulus(group.ringMin, group.ringMax)
+        const agent = this.spawnAgent(group.id, p.x, p.z, this.ctx.rng)
+        agent.waveTag = true
+        if (agent.isBoss) this.setBoss(agent)
+      }
+    },
+    spawnAllies: (count) => {
+      for (let i = 0; i < count; i++) {
+        // Sinh ở phía cổng phái: đệ tử đi từ trong sơn môn ra, không từ trên trời
+        const p = this.ctx.rng.inAnnulus(2, 5)
+        this.spawnAgent('deTu', p.x, GATE_DISTANCE - 4 + p.z, this.ctx.rng, 'ally')
+      }
+    },
+    clearEnemies: () => {
+      for (const agent of this.agents) {
+        if (agent.combatant.side !== 'enemy' || agent.combatant.dead) continue
+        // Xoá thẳng, KHÔNG qua strike(): đây là dọn sân sau một đợt thất bại,
+        // không phải người chơi hạ được chúng — trả thưởng ở đây là cho Tu Vi
+        // miễn phí mỗi lần chết
+        agent.combatant.dead = true
+        agent.combatant.deadFor = 99
+        this.rewarded.add(agent.combatant.id)
+      }
+      this.setBoss(null)
+    },
+    announce: (text, kind) => {
+      const wave = this.director.current
+      if (kind === 'wave') this.banner.flash(wave?.name ?? 'Khởi trận', text, 2.4, 'wave')
+      else this.ctx.bus.emit('toast', { text, kind: kind === 'good' ? 'good' : 'bad' })
+    },
+    bossWave: (unitId) => {
+      if (unitId === null) this.setBoss(null)
+    },
+  }
+
   /** Điều khiển debug — bảng lil-gui đọc từ đây. */
   readonly debug: SceneDebugActions = {
     spawnEnemies: (id, count) => {
       for (let i = 0; i < count; i++) {
         // Sinh quanh người chơi nhưng chừa khoảng để không đè lên đầu
         const p = this.ctx.rng.inAnnulus(4, 11)
-        this.spawnEnemy(id, this.player.pos.x + p.x, this.player.pos.z + p.z, this.ctx.rng)
+        this.spawnAgent(id, this.player.pos.x + p.x, this.player.pos.z + p.z, this.ctx.rng)
       }
     },
     killAllEnemies: () => {
-      for (const enemy of this.enemies) {
-        if (enemy.combatant.dead) continue
-        this.combat.strike(this.player.combatant, enemy.combatant, 99999)
+      for (const agent of this.agents) {
+        if (agent.combatant.dead) continue
+        this.combat.strike(this.player.combatant, agent.combatant, 99999)
       }
     },
     healPlayer: () => {
@@ -121,7 +170,7 @@ export class ArenaScene implements GameScene {
     setGodMode: (on) => {
       this.godMode = on
     },
-    enemyCount: () => this.enemies.length,
+    enemyCount: () => this.agents.length,
     aliveEnemyCount: () => this.combat.countAlive('enemy'),
     addTuVi: (amount) => {
       this.player.gainTuVi(amount)
@@ -148,6 +197,18 @@ export class ArenaScene implements GameScene {
       })
     },
     realmLabel: () => this.player.cultivation.name,
+    startWave: () => {
+      this.director.start(this.waveActions)
+    },
+    jumpToWave: (index) => {
+      // Dọn sạch đợt đang chạy trước, nếu không thì quái của đợt cũ trộn vào đợt
+      // mới và không đợt nào kết thúc được
+      this.waveActions.clearEnemies()
+      this.director.state = 'cleared'
+      this.director.index = Math.max(0, Math.min(this.director.total - 1, index))
+      this.director.start(this.waveActions)
+    },
+    waveLabel: () => `${this.director.index + 1}/${this.director.total} · ${this.director.state}`,
   }
 
   load(ctx: SceneContext): void {
@@ -182,11 +243,13 @@ export class ArenaScene implements GameScene {
     this.projectiles = new ProjectileSystem(three, this.combat, rng)
     this.swords = new SwordStorm(three, this.combat, ctx.bus)
 
-    this.enemyCtx = {
+    this.agentCtx = {
       world: this.combat,
       collision: this.collision,
       ground: this.terrain,
       rng,
+      projectiles: this.projectiles,
+      onBossPhase: (agent, phase, index) => this.onBossPhase(agent, phase, index),
     }
 
     this.pickups = new PickupSystem(three)
@@ -212,7 +275,32 @@ export class ArenaScene implements GameScene {
     this.skillBar = new SkillBar(uiRoot, ctx.bus)
     this.bars = new WorldBars(uiRoot)
     this.hints = new KeyHints(uiRoot)
+    this.bossBar = new BossBar(uiRoot)
+    this.banner = new WaveBanner(uiRoot)
     this.buildPanels(uiRoot)
+
+    // Lớp quân hậu cảnh: đệ tử Thất Huyền Môn chống ma đạo ở vòng ngoài.
+    // Đặt ở phía -X, đối diện cổng phái (cổng ở +Z), nên khi người chơi từ cổng
+    // tiến vào sân là đang tiến VỀ PHÍA trận đánh.
+    this.crowd = new Crowd(
+      three,
+      [
+        { robe: Palette.aoDeTu, trim: Palette.vienAo, skin: Palette.daNguoi },
+        { robe: Palette.aoMaDao, trim: Palette.maHuyet, skin: 0xd8bfa0 },
+      ],
+      64,
+    )
+    // Vòng 32–43 và cung hẹp: đây là chỗ ĐỌC ĐƯỢC. Rải 58 cặp trên nửa vòng
+    // rộng 34–52 thì mật độ quá thấp, từ trong sân nhìn ra chỉ thấy vài cái đốm
+    // — mà cảm giác "đại chiến" đến từ MẬT ĐỘ, không từ diện tích. Vẫn nằm ngoài
+    // vòng sinh quái của đợt (tối đa 30) nên không ai nhầm chúng là mục tiêu.
+    this.crowd.layout(rng, this.terrain, {
+      radiusMin: 32,
+      radiusMax: 43,
+      arcFrom: Math.PI * 0.74,
+      arcTo: Math.PI * 1.36,
+      pairs: 58,
+    })
 
     // Vụ nổ của phi hành khí: hệ phi hành khí không biết VFX tồn tại, chỉ gọi hook
     this.projectiles.onExplode = (x, y, z, radius, spec) => {
@@ -243,7 +331,9 @@ export class ArenaScene implements GameScene {
       }
     })
 
-    this.spawnWave(rng)
+    // Quái nền quanh rừng để giữa hai đợt vẫn cày Tu Vi được. Chúng KHÔNG mang
+    // cờ waveTag nên không tính vào điều kiện dẹp xong đợt.
+    this.spawnAmbient(rng)
 
     camera.snapTo(this.player.pos.x, this.player.y + 0.9, this.player.pos.z)
     three.updateMatrixWorld(true)
@@ -447,16 +537,50 @@ export class ArenaScene implements GameScene {
    */
   private grantRewards(): void {
     const rng = this.ctx.rng
-    for (const enemy of this.enemies) {
-      const c = enemy.combatant
+    for (const agent of this.agents) {
+      const c = agent.combatant
       if (!c.dead || this.rewarded.has(c.id)) continue
       this.rewarded.add(c.id)
+      // Chỉ QUÁI mới cho Tu Vi và vật phẩm. Không có dòng này thì từ lúc có đệ
+      // tử đồng môn, mỗi đồng môn tử trận lại rơi ra linh thảo và cho người chơi
+      // Tu Vi — vừa sai về nghĩa, vừa biến "để đồng môn chết" thành cách farm.
+      if (c.side !== 'enemy') continue
 
-      this.player.gainTuVi(tuViReward(enemy.def.id))
-      for (const drop of rollDrops(enemy.def.id, rng)) {
+      this.player.gainTuVi(tuViReward(agent.def.id))
+      for (const drop of rollDrops(agent.def.id, rng)) {
         this.pickups.spawn(drop.id, drop.count, c.pos.x, c.y, c.pos.z, rng)
       }
     }
+  }
+
+  /**
+   * Nhịp chế độ thủ trận.
+   *
+   * Số quái sống được đếm NGAY TẠI ĐÂY rồi mới đưa vào bộ điều phối, không dùng
+   * lại con số của bước trước — bộ điều phối có cờ chặn riêng cho việc đó, nhưng
+   * đưa số cũ vào vẫn làm đợt kết thúc trễ một bước.
+   */
+  private updateWaves(dt: number, input: SceneContext['input']): void {
+    // Đang đột phá thì không nhận lệnh khởi trận: người chơi đang bấm SPACE dẫn
+    // khí, không nên vô tình mở một đợt quái lên đầu mình
+    if (!this.trial.active && input.wasPressed('Enter') && this.director.canStart) {
+      this.director.start(this.waveActions)
+    }
+
+    // Đệ tử đồng môn đi theo người chơi: dời điểm neo là đủ, không cần thêm
+    // trạng thái nào vào máy trạng thái của Agent
+    for (const agent of this.agents) {
+      if (agent.combatant.side === 'ally') {
+        agent.setHome(this.player.pos.x, this.player.pos.z)
+      }
+    }
+
+    this.director.fixedUpdate(
+      dt,
+      this.aliveWaveEnemies(),
+      this.player.combatant.dead,
+      this.waveActions,
+    )
   }
 
   /** Đọc phím mở bảng và các lệnh tu luyện. */
@@ -473,24 +597,76 @@ export class ArenaScene implements GameScene {
     if (input.wasPressed('KeyB')) this.startTrial()
   }
 
-  /** Rải quái quanh luyện võ trường. */
-  private spawnWave(rng: SceneContext['rng']): void {
-    for (let i = 0; i < 9; i++) {
-      const p = rng.inAnnulus(9, 24)
-      this.spawnEnemy('yeuThu', p.x, p.z, rng)
+  /** Quái nền rải quanh rừng — nguồn Tu Vi giữa hai đợt. */
+  private spawnAmbient(rng: SceneContext['rng']): void {
+    for (let i = 0; i < 7; i++) {
+      const p = rng.inAnnulus(16, 30)
+      this.spawnAgent('yeuThu', p.x, p.z, rng)
     }
-    for (let i = 0; i < 4; i++) {
-      const p = rng.inAnnulus(15, 30)
-      this.spawnEnemy('hacLang', p.x, p.z, rng)
+    for (let i = 0; i < 3; i++) {
+      const p = rng.inAnnulus(22, 34)
+      this.spawnAgent('hacLang', p.x, p.z, rng)
     }
   }
 
-  spawnEnemy(id: string, x: number, z: number, rng: SceneContext['rng']): Enemy {
-    const enemy = new Enemy(enemyDef(id), x, z, this.terrain, rng)
-    this.enemies.push(enemy)
-    this.combat.add(enemy.combatant)
-    this.ctx.three.add(enemy.combatant.root)
-    return enemy
+  /** Bật/tắt thanh máu tướng. `null` = hết đợt tướng. */
+  private setBoss(agent: Agent | null): void {
+    this.boss = agent
+    if (agent?.def.boss) this.bossBar.show(agent.def.boss)
+    else this.bossBar.hide()
+  }
+
+  /** Số quái CỦA ĐỢT còn sống — điều kiện dẹp xong đợt chỉ đếm những con này. */
+  private aliveWaveEnemies(): number {
+    let n = 0
+    for (const agent of this.agents) {
+      if (agent.waveTag && agent.combatant.side === 'enemy' && !agent.combatant.dead) n++
+    }
+    return n
+  }
+
+  /**
+   * Tướng vào phase mới: gọi tay sai, rung camera, báo tên phase.
+   *
+   * Tay sai sinh ở đây chứ không trong Agent: Agent không được biết tới scene,
+   * và việc "thêm một thực thể vào thế giới" là việc của màn.
+   */
+  private onBossPhase(agent: Agent, phase: BossPhase, index: number): void {
+    if (index === 0) return // phase mở đầu không phải một sự kiện
+
+    this.ctx.bus.emit('camera:shake', { magnitude: 0.42, duration: 0.5 })
+    this.vfx.floats.spawn(
+      agent.combatant.pos.x,
+      agent.combatant.y + agent.combatant.view.height + 0.5,
+      agent.combatant.pos.z,
+      phase.name,
+      'crit',
+    )
+    this.ctx.bus.emit('toast', { text: `${agent.def.name}: ${phase.name}`, kind: 'bad' })
+
+    const summon = phase.summon
+    if (!summon) return
+    for (let i = 0; i < summon.count; i++) {
+      const p = this.ctx.rng.inAnnulus(2.4, 4.5)
+      const minion = this.spawnAgent(
+        summon.id,
+        agent.combatant.pos.x + p.x,
+        agent.combatant.pos.z + p.z,
+        this.ctx.rng,
+      )
+      // Tay sai của tướng CÓ tính vào đợt: nếu không thì người chơi hạ tướng
+      // xong là đợt kết thúc và lũ tay sai còn lại đứng đó đánh mãi
+      minion.waveTag = true
+      this.vfx.spawnExplosion(minion.combatant.pos.x, minion.combatant.y + 0.4, minion.combatant.pos.z, 1.6, 'moc')
+    }
+  }
+
+  spawnAgent(id: string, x: number, z: number, rng: SceneContext['rng'], side: Side = 'enemy'): Agent {
+    const agent = new Agent(unitDef(id), x, z, this.terrain, rng, side)
+    this.agents.push(agent)
+    this.combat.add(agent.combatant)
+    this.ctx.three.add(agent.combatant.root)
+    return agent
   }
 
   private groundAt(x: number, z: number): number {
@@ -658,6 +834,7 @@ export class ArenaScene implements GameScene {
 
     this.updateCultivationInput()
     this.updateTrial(dt)
+    this.updateWaves(dt, input)
 
     this.player.fixedUpdate(
       dt,
@@ -668,14 +845,14 @@ export class ArenaScene implements GameScene {
       this.projectiles,
       this.swords,
     )
-    for (const enemy of this.enemies) enemy.fixedUpdate(dt, this.enemyCtx)
+    for (const agent of this.agents) agent.fixedUpdate(dt, this.agentCtx)
     this.projectiles.fixedUpdate(dt, this.collision, this.terrain)
     this.swords.fixedUpdate(dt)
     this.pickups.fixedUpdate(dt, this.player.pos.x, this.player.pos.z, this.player.y, this.terrain)
 
     // Tách đàn SAU khi mọi thứ đã di chuyển, để không con nào bị xử lý hai lần
     this.combat.resolveCrowding()
-    for (const enemy of this.enemies) enemy.combatant.applyTransform()
+    for (const agent of this.agents) agent.combatant.applyTransform()
     this.player.combatant.applyTransform()
 
     // Trả thưởng TRƯỚC khi dọn xác: reap() tháo con vật ra khỏi danh sách nên
@@ -693,12 +870,13 @@ export class ArenaScene implements GameScene {
     const removed = this.combat.reapCorpses()
     if (removed.length === 0) return
     const removedSet = new Set<Combatant>(removed)
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      const enemy = this.enemies[i] as Enemy
-      if (!removedSet.has(enemy.combatant)) continue
-      this.ctx.three.remove(enemy.combatant.root)
-      this.rewarded.delete(enemy.combatant.id)
-      this.enemies.splice(i, 1)
+    for (let i = this.agents.length - 1; i >= 0; i--) {
+      const agent = this.agents[i] as Agent
+      if (!removedSet.has(agent.combatant)) continue
+      this.ctx.three.remove(agent.combatant.root)
+      this.rewarded.delete(agent.combatant.id)
+      if (this.boss === agent) this.setBoss(null)
+      this.agents.splice(i, 1)
     }
   }
 
@@ -738,7 +916,7 @@ export class ArenaScene implements GameScene {
   render(_alpha: number, frameDt: number): void {
     const { input, camera } = this.ctx
     this.player.render(frameDt)
-    for (const enemy of this.enemies) enemy.render(frameDt)
+    for (const agent of this.agents) agent.render(frameDt)
     this.swords.render(frameDt)
 
     const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null
@@ -748,6 +926,17 @@ export class ArenaScene implements GameScene {
     this.bars.update(frameDt, this.combat.all, camera.camera, w, h)
     this.skillBar.update(frameDt, this.player.caster, this.player.realm, this.player.linhLuc)
     this.hud.setCultivation(this.player.cultivation)
+    this.crowd.update(frameDt)
+    this.banner.update(frameDt, this.director, this.aliveWaveEnemies())
+    if (this.boss && this.bossBar.isVisible) {
+      const c = this.boss.combatant
+      this.bossBar.update(
+        c.dead ? 0 : c.hp,
+        c.stats.maxSinhLuc,
+        this.boss.phaseIndex,
+        this.boss.phase?.name ?? '',
+      )
+    }
     for (const panel of this.panels) panel.tick(frameDt)
     if (this.trialUi.isOpen) this.trialUi.update()
 
@@ -787,8 +976,8 @@ export class ArenaScene implements GameScene {
         if (child instanceof Mesh) (child.geometry as BufferGeometry).dispose()
       })
     }
-    for (const enemy of this.enemies) this.ctx.three.remove(enemy.combatant.root)
-    this.enemies.length = 0
+    for (const agent of this.agents) this.ctx.three.remove(agent.combatant.root)
+    this.agents.length = 0
     this.objects.length = 0
     this.collision.clear()
     this.combat.clear()
@@ -801,6 +990,9 @@ export class ArenaScene implements GameScene {
     this.skillBar.dispose()
     this.bars.dispose()
     this.hints.dispose()
+    this.bossBar.dispose()
+    this.banner.dispose()
+    this.crowd.dispose()
     this.trialUi.dispose()
     for (const panel of this.panels) panel.dispose()
     this.panels = []

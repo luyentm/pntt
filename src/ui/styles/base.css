@@ -786,3 +786,143 @@ html, body {
   color: rgba(232, 226, 208, 0.72);
   font-weight: 700;
 }
+
+/* ---------- Thanh máu tướng ---------- */
+.bossbar {
+  position: absolute;
+  left: 50%;
+  top: 16px;
+  transform: translate(-50%, -8px);
+  width: min(560px, calc(100vw - 60px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.bossbar.is-open { opacity: 1; transform: translate(-50%, 0); }
+
+.bossbar-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+.bossbar-title {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--huyet);
+}
+.bossbar-phase {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--kim);
+}
+
+.bossbar-track {
+  position: relative;
+  height: 15px;
+  border-radius: 3px;
+  background: rgba(8, 10, 14, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(196, 84, 63, 0.55),
+    0 3px 14px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+.bossbar-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: linear-gradient(180deg, #c4543f, #7a2018);
+  transition: width 0.16s ease-out;
+}
+/* Vạch mốc phase: người chơi thấy trước lúc boss sẽ đổi bài */
+.bossbar-ticks { position: absolute; inset: 0; }
+.bossbar-ticks i {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  margin-left: -1px;
+  background: rgba(232, 226, 208, 0.5);
+}
+.bossbar-hp {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(245, 240, 226, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.bossbar.is-phasing .bossbar-track { animation: boss-phase 0.55s ease-out; }
+@keyframes boss-phase {
+  0% { box-shadow: inset 0 0 0 1px var(--kim), 0 0 26px rgba(217, 177, 84, 0.85); }
+  100% { box-shadow: inset 0 0 0 1px rgba(196, 84, 63, 0.55), 0 3px 14px rgba(0, 0, 0, 0.55); }
+}
+
+/* ---------- Lớp phủ thủ trận ---------- */
+.wavebanner {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+
+.wave-counter {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(232, 226, 208, 0.6);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.wave-card {
+  padding: 20px 34px;
+  border-radius: var(--ui-radius);
+  background: rgba(11, 14, 18, 0.86);
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 226, 208, 0.16),
+    0 12px 44px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+.wavebanner.is-open .wave-card { opacity: 1; transform: translateY(0) scale(1); }
+
+.wave-title {
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--lua);
+}
+.wavebanner[data-kind='good'] .wave-title { color: var(--luc); }
+.wavebanner[data-kind='bad'] .wave-title { color: var(--huyet); }
+.wavebanner[data-kind='wave'] .wave-title { color: var(--kim); }
+
+.wave-sub {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(232, 226, 208, 0.72);
+}
+.wave-hint {
+  margin-top: 12px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(217, 177, 84, 0.85);
+}
+.wave-hint:empty { display: none; }
+
+/* Thẻ giữ mãi thì mờ nền lại một chút để đọc được, thẻ flash thì không —
+   flash xuất hiện giữa lúc đang đánh, làm mờ cả trận là che mất trận */
+.wavebanner.is-final .wave-card {
+  background: rgba(9, 11, 15, 0.94);
+}
