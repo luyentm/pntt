@@ -564,6 +564,70 @@ export class Player {
     }
   }
 
+  /**
+   * Thi triển một ô pháp thuật theo lệnh của mã, không qua bàn phím.
+   *
+   * Có riêng cho chế độ trình diễn. Không giả lập một lần bấm phím vì bàn phím
+   * được đọc trong `fixedUpdate`, còn bộ trình diễn lại chạy TRƯỚC bước đó —
+   * lệnh giả sẽ trôi mất một bước hoặc phát hai lần.
+   */
+  castSlot(
+    slot: number,
+    world: CombatWorld,
+    projectiles: ProjectileSystem,
+    swords: SwordStorm,
+  ): boolean {
+    const me = this.combatant
+    const target = this.autoAim ? this.aim.target : null
+    const ctx = {
+      world,
+      projectiles,
+      swords,
+      cursorX: target ? target.pos.x : me.pos.x + Math.sin(me.facing) * 6,
+      cursorZ: target ? target.pos.z : me.pos.z + Math.cos(me.facing) * 6,
+      dashDirX: this.moveDirX,
+      dashDirZ: this.moveDirZ,
+    }
+    this.faceAim(ctx.cursorX, ctx.cursorZ)
+    const result = this.caster.tryCast(slot, this.realm, this.linhLuc, ctx)
+    if (!result.ok) return false
+    this.linhLuc -= result.cost
+    this.phase = 'none'
+    this.chainTimer = 0
+    this.queuedAttack = false
+    this.chibi.animator.clearOverlay()
+    this.chibi.animator.play(CAST, 0.06)
+    this.chibi.animator.timeScale = 1
+    return true
+  }
+
+  /** Ra một nhát đánh theo lệnh của mã. Dùng cho chế độ trình diễn. */
+  triggerAttack(): void {
+    this.queuedAttack = true
+  }
+
+  /** Bật/tắt phi hành theo lệnh của mã, bỏ qua điều kiện linh lực. */
+  setFlying(on: boolean): void {
+    if (on === this.flying) return
+    if (on) this.startFlying()
+    else this.stopFlying()
+  }
+
+  /** Bật/tắt toạ thiền theo lệnh của mã. */
+  setMeditating(on: boolean): void {
+    if (on === this.meditating) return
+    if (on) {
+      this.meditating = true
+      this.stopFlying()
+      this.chibi.animator.clearOverlay()
+      this.chibi.animator.play(MEDITATE, 0.2)
+      this.chibi.animator.timeScale = 1
+    } else {
+      this.meditating = false
+      this.combatant.view.showIdle()
+    }
+  }
+
   /** Cộng Tu Vi từ nguồn ngoài (giết quái, đan dược, linh thạch). */
   gainTuVi(amount: number): void {
     const result = this.cultivation.gainTuVi(amount)

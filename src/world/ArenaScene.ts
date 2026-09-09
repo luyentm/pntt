@@ -1,6 +1,7 @@
 import { Mesh, PointLight, Vector3, type BufferGeometry, type Object3D } from 'three'
 import { canCraft, craft } from '@/game/Alchemy'
 import { clearSave, saveGame, type SaveData, type SaveStorage } from '@/game/SaveGame'
+import { ShowcaseDirector, type ShowcaseActions } from '@/game/ShowcaseDirector'
 import { WaveDirector, type WaveActions } from '@/game/WaveDirector'
 import { BreakthroughTrial, type TrialOutcome } from '@/game/BreakthroughTrial'
 import { unitDef, type BossPhase } from '@/game/data/units'
@@ -9,6 +10,7 @@ import { itemDef } from '@/game/data/items'
 import { REALM, majorRealm } from '@/game/data/realms'
 import { recipeById } from '@/game/data/recipes'
 import { BossBar } from '@/ui/BossBar'
+import { ShowcasePanel } from '@/ui/ShowcasePanel'
 import { Hud } from '@/ui/Hud'
 import { KeyHints } from '@/ui/KeyHints'
 import { SkillBar } from '@/ui/SkillBar'
@@ -94,6 +96,10 @@ export class ArenaScene implements GameScene {
   swords!: SwordStorm
   /** Bộ điều phối "Thất Huyền Môn thủ trận". */
   readonly director = new WaveDirector()
+  /** Bộ điều phối chế độ trình diễn thần thông. */
+  readonly showcase = new ShowcaseDirector()
+  /** Đang ở chế độ trình diễn. */
+  demoMode = false
   /** Tổng thời gian đã chơi của lượt này, giây. */
   playTime = 0
   /** Chỗ lưu. main gán localStorage vào; test gán bản giả. */
@@ -136,6 +142,32 @@ export class ArenaScene implements GameScene {
   private autoSaveTimer = AUTO_SAVE_SECONDS
   private ambientTimer = AMBIENT_RESPAWN
   private crowd!: Crowd
+  private showcasePanel!: ShowcasePanel
+  private readonly showcaseActions: ShowcaseActions = {
+    cast: (slot) => {
+      const p = this.player
+      // Xoá hồi chiêu của ĐÚNG ô này rồi mới gọi: showreel phải diễn được cả
+      // Thanh Trúc Phong Vân Kiếm (hồi 22 giây) trong một bước 9 giây
+      p.caster.clearCooldown(slot)
+      p.castSlot(slot, this.combat, this.projectiles, this.swords)
+    },
+    melee: () => this.player.triggerAttack(),
+    setFlight: (on) => this.player.setFlying(on),
+    setMeditate: (on) => this.player.setMeditating(on),
+    breakthroughFx: () => {
+      const p = this.player
+      this.ctx.bus.emit('cultivation:breakthrough', {
+        success: true,
+        realmName: p.cultivation.name,
+        chance: 1,
+        x: p.pos.x,
+        y: p.y,
+        z: p.pos.z,
+      })
+    },
+    refreshDummies: () => this.spawnDummies(),
+    announce: (step, index, total) => this.showcasePanel.setStep(step, index, total),
+  }
   private bossBar!: BossBar
   private banner!: WaveBanner
   /** Tướng của đợt hiện tại, nếu đang có. */
@@ -311,6 +343,15 @@ export class ArenaScene implements GameScene {
     this.hints = new KeyHints(uiRoot)
     this.bossBar = new BossBar(uiRoot)
     this.banner = new WaveBanner(uiRoot)
+    this.showcasePanel = new ShowcasePanel(uiRoot)
+    // Bấm vào một dòng trong danh sách là nhảy tới chiêu đó, và CHUYỂN sang tự
+    // chơi: người chơi vừa chọn tay thì họ muốn xem cái đó, không muốn showreel
+    // lôi đi sau vài giây
+    this.showcasePanel.onPick = (index) => {
+      this.showcase.jumpTo(index, this.showcaseActions)
+      this.showcase.playing = false
+      this.showcasePanel.setPlaying(false)
+    }
     this.buildPanels(uiRoot)
 
     // Lớp quân hậu cảnh: đệ tử Thất Huyền Môn chống ma đạo ở vòng ngoài.
@@ -783,6 +824,136 @@ export class ArenaScene implements GameScene {
     this.hud.setRealm(this.player.realm)
   }
 
+  /** Cảnh giới mở hết thần thông: Kết Đan, để cả 7 chiêu và phi hành đều dùng được. */
+  private static readonly DEMO_REALM = { major: REALM.KET_DAN, tier: 2 }
+
+  /**
+   * Vào chế độ trình diễn.
+   *
+   * KHÔNG dựng lại màn: địa hình, prop và ánh sáng đã đúng rồi. Chỉ đổi ba thứ —
+   * cảnh giới của người chơi, ai đang có mặt trên sân, và ai đang điều khiển
+   * nhân vật.
+   */
+  enterDemo(): void {
+    if (this.demoMode) return
+    this.demoMode = true
+
+    const p = this.player
+    p.cultivation.loadFrom({
+      major: ArenaScene.DEMO_REALM.major,
+      tier: ArenaScene.DEMO_REALM.tier,
+      tuVi: 0,
+      failStreak: 0,
+      linhNhu: 0,
+      totalTuVi: 0,
+    })
+    p.refreshStats()
+    p.combatant.hp = p.combatant.stats.maxSinhLuc
+    p.linhLuc = p.combatant.stats.maxLinhLuc
+    p.caster.freeCast = true
+    p.caster.reset()
+    this.godMode = true
+
+    // Dọn sân: showreel cần một sân trống rồi tự dựng bia đỡ theo từng bước
+    this.director.reset()
+    this.waveActions.clearEnemies()
+    this.reap()
+    p.revive(0, 4, Math.PI)
+
+    this.banner.hide()
+    this.bossBar.hide()
+    this.closePanels()
+    this.hud.setRealm(p.realm)
+    this.showcasePanel.show()
+    this.showcase.reset()
+    this.spawnDummies()
+    this.showcase.start(this.showcaseActions)
+    this.showcasePanel.setPlaying(true)
+  }
+
+  /** Ra khỏi chế độ trình diễn và trả màn về trạng thái chơi thật. */
+  exitDemo(): void {
+    if (!this.demoMode) return
+    this.demoMode = false
+    this.showcase.stop(this.showcaseActions)
+    this.showcase.reset()
+    this.showcasePanel.hide()
+    this.player.caster.freeCast = false
+    this.player.caster.reset()
+    this.godMode = false
+    this.waveActions.clearEnemies()
+    this.reap()
+  }
+
+  /**
+   * Dựng lại vòng bia đỡ.
+   *
+   * Bia đỡ là `passive` nên không đánh trả — nhưng vẫn là phe địch, nên mọi
+   * chiêu vẫn ăn vào chúng đủ cả đẩy lùi, đóng băng và thiêu đốt. Nếu để chúng
+   * đánh trả thì mỗi bước trình diễn sẽ bị một con quái xông vào cắn ngang.
+   */
+  private spawnDummies(): void {
+    for (const agent of this.agents) {
+      if (agent.combatant.side !== 'enemy') continue
+      agent.combatant.dead = true
+      agent.combatant.deadFor = 99
+      this.rewarded.add(agent.combatant.id)
+    }
+    this.reap()
+
+    const rng = this.ctx.rng
+    const p = this.player
+    // Ba lớp bia: gần cho đòn cận chiến, giữa cho pháp vực, xa cho phi hành khí
+    const rings: ReadonlyArray<[string, number, number]> = [
+      ['yeuThu', 2.4, 4],
+      ['hacLang', 5.2, 5],
+      ['thietGiapThi', 8.2, 4],
+    ]
+    for (const [id, radius, count] of rings) {
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2 + rng.float(-0.2, 0.2)
+        const agent = this.spawnAgent(
+          id,
+          p.pos.x + Math.cos(a) * radius,
+          p.pos.z + Math.sin(a) * radius,
+          rng,
+        )
+        agent.passive = true
+        // Máu rất cao: bia đỡ chết ngay thì bước sau không còn gì để diễn vào
+        agent.combatant.hp = agent.combatant.stats.maxSinhLuc * 40
+      }
+    }
+  }
+
+  /**
+   * Đọc phím của chế độ trình diễn.
+   *
+   * Dùng `P` / `Q` / `E` chứ KHÔNG dùng Space và mũi tên: Space đã là phím ngự
+   * kiếm phi hành và mũi tên đã là phím di chuyển. Chồng lên nhau thì một lần
+   * bấm Space vừa lật showreel vừa cất nhân vật lên trời.
+   *
+   * Và `Esc` phải bắt Ở ĐÂY: đường Esc thường nằm trong `updateCultivationInput`,
+   * mà hàm đó không chạy ở chế độ trình diễn — nên không bắt lại thì không có
+   * cách nào ra khỏi chế độ này bằng bàn phím.
+   */
+  private updateShowcaseInput(): void {
+    const { input } = this.ctx
+    if (input.wasPressed('KeyP')) {
+      this.showcase.toggle(this.showcaseActions)
+      this.showcasePanel.setPlaying(this.showcase.playing)
+    }
+    if (input.wasPressed('KeyE')) this.showcase.next(this.showcaseActions)
+    if (input.wasPressed('KeyQ')) this.showcase.prev(this.showcaseActions)
+    if (input.wasPressed('Escape')) this.ctx.bus.emit('game:pauseRequest', {})
+
+    // Vẫn cho tự thi triển bằng 1…7 trong lúc showreel đang chạy — bấm một chiêu
+    // là chuyển sang tự chơi, vì rõ ràng người chơi muốn tự làm
+    if (input.skillPressed() >= 0 && this.showcase.playing) {
+      this.showcase.playing = false
+      this.showcasePanel.setPlaying(false)
+    }
+  }
+
   /** Bật/tắt thanh máu tướng. `null` = hết đợt tướng. */
   private setBoss(agent: Agent | null): void {
     this.boss = agent
@@ -1021,12 +1192,22 @@ export class ArenaScene implements GameScene {
     // đặc biệt trong đường gây sát thương
     if (this.godMode) this.player.combatant.invuln = 1
 
-    this.playTime += dt
-    this.updateCultivationInput()
-    this.updateTrial(dt)
-    this.updateWaves(dt, input)
-    this.updateAmbient(dt)
-    this.updateAutoSave(dt)
+    if (this.demoMode) {
+      // Chế độ trình diễn thay HẲN phần thủ trận: không đợt, không quái nền,
+      // không tự lưu (nó không phải một lượt chơi nên không có gì đáng lưu), và
+      // không đếm thời gian chơi
+      this.updateShowcaseInput()
+      this.showcase.fixedUpdate(dt, this.showcaseActions)
+      // Linh lực luôn đầy: chế độ này để XEM chiêu, không phải để quản tài nguyên
+      this.player.linhLuc = this.player.combatant.stats.maxLinhLuc
+    } else {
+      this.playTime += dt
+      this.updateCultivationInput()
+      this.updateTrial(dt)
+      this.updateWaves(dt, input)
+      this.updateAmbient(dt)
+      this.updateAutoSave(dt)
+    }
 
     this.player.fixedUpdate(
       dt,
@@ -1119,7 +1300,14 @@ export class ArenaScene implements GameScene {
     this.skillBar.update(frameDt, this.player.caster, this.player.realm, this.player.linhLuc)
     this.hud.setCultivation(this.player.cultivation)
     this.crowd.update(frameDt)
-    this.banner.update(frameDt, this.director, this.aliveWaveEnemies())
+    // Ở chế độ trình diễn thì KHÔNG nhịp lớp phủ thủ trận.
+    //
+    // `WaveBanner.update()` tự chọn thẻ theo trạng thái bộ điều phối, và trạng
+    // thái đó là 'idle' sau khi reset — nên nó dựng lại thẻ "bấm ENTER để khởi
+    // trận" ngay khung sau khi vào chế độ trình diễn, đè lên đúng cái thẻ đang
+    // giới thiệu chiêu. Gọi `hide()` một lần lúc vào là không đủ.
+    if (this.demoMode) this.banner.hide()
+    else this.banner.update(frameDt, this.director, this.aliveWaveEnemies())
     if (this.boss && this.bossBar.isVisible) {
       const c = this.boss.combatant
       this.bossBar.update(
@@ -1200,6 +1388,7 @@ export class ArenaScene implements GameScene {
     this.skillBar.dispose()
     this.bars.dispose()
     this.hints.dispose()
+    this.showcasePanel.dispose()
     this.bossBar.dispose()
     this.banner.dispose()
     this.crowd.dispose()

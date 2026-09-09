@@ -79,18 +79,29 @@ function saveInfo(): string | null {
 
 const menu = new Menu(uiRoot, settings, {
   continueSave: () => {
+    scene.exitDemo()
     const data = loadGame(storage)
     if (data) scene.applySave(data)
     enterPlay()
   },
   newGame: () => {
     clearSave(storage)
+    scene.exitDemo()
     scene.resetProgress()
+    enterPlay()
+  },
+  showcase: () => {
+    // KHÔNG xoá bản lưu và không ghi gì: chế độ này chỉ để xem, nên nó không
+    // được phép chạm vào tiến độ của người chơi
+    scene.enterDemo()
     enterPlay()
   },
   resume: () => enterPlay(),
   saveAndQuit: () => {
-    scene.save(Date.now())
+    // Ở chế độ trình diễn thì KHÔNG lưu: nó không phải một lượt chơi, và ghi
+    // cảnh giới Kết Đan của chế độ xem vào bản lưu sẽ xoá sạch tiến độ thật
+    if (scene.demoMode) scene.exitDemo()
+    else scene.save(Date.now())
     openMenu('main')
   },
   changeSettings: (patch) => {
@@ -115,7 +126,14 @@ function enterPlay(): void {
 }
 
 game.bus.on('game:pauseRequest', () => {
-  if (!menu.isOpen) openMenu('pause')
+  if (menu.isOpen) return
+  // Chế độ trình diễn không có gì để "tạm dừng" — Esc là đường ra
+  if (scene.demoMode) {
+    scene.exitDemo()
+    openMenu('main')
+    return
+  }
+  openMenu('pause')
 })
 
 // Đóng menu tạm dừng bằng Esc. Bắt ở đây chứ không trong Input: lúc menu đang
@@ -132,7 +150,9 @@ window.addEventListener('keydown', (e) => {
 // Lưu khi rời trang. 'visibilitychange' đáng tin hơn 'beforeunload' trên mobile
 // và khi tab bị đóng đột ngột.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && !menu.isOpen) scene.save(Date.now())
+  if (document.visibilityState === 'hidden' && !menu.isOpen && !scene.demoMode) {
+    scene.save(Date.now())
+  }
 })
 
 // Số đọc của debug panel phải lấy SAU khi frame đã vẽ xong, nên hook vào

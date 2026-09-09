@@ -223,6 +223,47 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
 
+### Chế độ trình diễn thần thông
+
+Chọn từ menu chính (*Xem thần thông*). Mở hết cảnh giới Kết Đan nên cả 7 pháp thuật,
+ngự kiếm phi hành và 33 kiếm trúc đều dùng được ngay.
+
+- **Showreel tự chạy** đi qua 11 mục — combo cận chiến, 7 pháp thuật, phi hành, toạ
+  thiền, đột phá — kèm tên và chú thích cho từng thứ. `P` đổi giữa tự chạy và tự chơi,
+  `Q`/`E` lật mục, hoặc bấm thẳng vào danh sách bên trái.
+- Danh sách hiện **hết** kịch bản chứ không chỉ mục đang diễn: người vào đây để xem Hàn
+  Lập có những gì, nên phải thấy toàn bộ ngay và nhảy tới cái mình muốn, không phải ngồi
+  đợi showreel đi tới.
+- **Chờ 0,9 giây sau khi hiện chú thích rồi mới diễn.** Chữ và chiêu nổ cùng lúc thì mắt
+  bị chia hai chỗ và không đọc được cái nào.
+- **Bia đỡ là `passive`** — không tìm mục tiêu, không ra đòn, nhưng vẫn là phe địch nên
+  mọi chiêu vẫn ăn vào đủ cả đẩy lùi, đóng băng và thiêu đốt. Để chúng đánh trả thì mỗi
+  mục trình diễn bị một con quái xông vào cắn ngang. Máu ×40 để chúng không chết giữa
+  lúc đang diễn.
+- **KHÔNG chạm vào tiến độ.** Nó ghi đè cảnh giới trong bộ nhớ nhưng không bao giờ ghi
+  ra `localStorage`, và "Lưu và về menu" trong lúc trình diễn cũng không ghi — ghi cảnh
+  giới Kết Đan của chế độ xem vào bản lưu sẽ xoá sạch tiến độ thật. Đã kiểm cả vòng:
+  lưu → vào trình diễn → về menu → Tiếp tục, ra đúng tiến độ cũ.
+- `freeCast` bỏ giá linh lực nhưng **giữ hồi chiêu**: hồi chiêu là thứ giữ nhịp cho
+  showreel, bỏ nó thì mỗi mục thành một tràng chiêu chồng lên nhau. Bộ trình diễn tự xoá
+  hồi chiêu của ĐÚNG ô nó cần, nên Thanh Trúc Phong Vân Kiếm (hồi 22 giây) vẫn diễn được
+  trong một mục 9 giây.
+- Bộ điều phối phải **tắt trạng thái kéo dài khi rời mục**: bay và toạ thiền là bật/tắt
+  chứ không phải một cú nổ, không tắt thì nhân vật vẫn lơ lửng trong lúc showreel đã
+  sang mục khác.
+
+Ba chỗ phải sửa khi nối vào:
+
+- Dùng `P`/`Q`/`E`, **không** dùng `Space` và mũi tên — `Space` đã là phím ngự kiếm phi
+  hành và mũi tên đã là phím di chuyển. Chồng lên nhau thì một lần bấm `Space` vừa lật
+  showreel vừa cất nhân vật lên trời.
+- `Esc` phải bắt **trong** hàm đọc phím của chế độ trình diễn: đường `Esc` thường nằm
+  trong `updateCultivationInput`, mà hàm đó không chạy ở chế độ này.
+- `WaveBanner.update()` tự chọn thẻ theo trạng thái bộ điều phối, và trạng thái đó là
+  `idle` sau khi reset — nên nó **dựng lại** thẻ "bấm ENTER để khởi trận" ngay khung sau
+  khi vào chế độ trình diễn, đè lên đúng cái thẻ đang giới thiệu chiêu. Gọi `hide()` một
+  lần lúc vào là không đủ; phải chặn cả lời gọi `update` mỗi khung.
+
 ### Ánh sáng
 
 Cảnh ban đầu nhìn ra "nhạt nhoà": cỏ, đá và cột đều nằm trong **cùng một dải xám-lục

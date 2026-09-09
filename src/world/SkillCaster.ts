@@ -49,6 +49,15 @@ export class SkillCaster {
 
   readonly dash: DashState = { active: false, vx: 0, vz: 0, remaining: 0 }
 
+  /**
+   * Bỏ qua giá linh lực. Dùng cho chế độ trình diễn.
+   *
+   * KHÔNG bỏ luôn hồi chiêu: hồi chiêu là thứ giữ nhịp cho showreel, và bỏ nó
+   * thì mỗi bước biến thành một tràng chiêu chồng lên nhau, không nhìn ra chiêu
+   * nào là chiêu nào. Bộ trình diễn tự xoá hồi chiêu của ĐÚNG ô nó cần.
+   */
+  freeCast = false
+
   private phaseTimer = 0
   private readonly cooldowns = new Float32Array(SKILLS.length)
   private readonly aoeBuffer: Combatant[] = []
@@ -71,6 +80,11 @@ export class SkillCaster {
 
   cooldownLeft(slot: number): number {
     return this.cooldowns[slot] ?? 0
+  }
+
+  /** Xoá hồi chiêu của một ô. Bộ trình diễn dùng để gọi đúng chiêu đúng lúc. */
+  clearCooldown(slot: number): void {
+    if (slot >= 0 && slot < this.cooldowns.length) this.cooldowns[slot] = 0
   }
 
   cooldownFraction(slot: number): number {
@@ -106,7 +120,9 @@ export class SkillCaster {
     if ((this.cooldowns[slot] ?? 0) > 0) {
       return { ok: false, reason: `${def.name} đang hồi` }
     }
-    if (linhLuc < def.linhLucCost) return { ok: false, reason: 'Không đủ linh lực' }
+    if (!this.freeCast && linhLuc < def.linhLucCost) {
+      return { ok: false, reason: 'Không đủ linh lực' }
+    }
 
     this.activeSlot = slot
     this.phase = 'dan'
@@ -119,7 +135,7 @@ export class SkillCaster {
     this.pendingCursorZ = ctx.cursorZ
 
     this.bus.emit('skill:cast', { id: def.id, slot, side: this.owner.side })
-    return { ok: true, cost: def.linhLucCost }
+    return { ok: true, cost: this.freeCast ? 0 : def.linhLucCost }
   }
 
   fixedUpdate(dt: number, ctx: CastContext): void {

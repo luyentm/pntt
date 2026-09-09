@@ -62,6 +62,14 @@ export class Agent {
    * ở rìa bản đồ sẽ khoá cứng cả đợt, và người chơi phải đi lùng nó khắp map.
    */
   waveTag = false
+  /**
+   * Bia đỡ: không tìm mục tiêu, không ra đòn, chỉ đứng chịu.
+   *
+   * Cần cho chế độ trình diễn. Vẫn là `side: 'enemy'` nên mọi chiêu vẫn ăn vào
+   * nó bình thường — đẩy lùi, đóng băng, thiêu đốt đều hiện đủ. Chỉ có phần AI
+   * là tắt, nên nó không xông vào cắn giữa lúc đang diễn một chiêu.
+   */
+  passive = false
 
   private vx = 0
   private vz = 0
@@ -243,7 +251,7 @@ export class Agent {
       return
     }
 
-    const target = ctx.world.nearestHostile(me, this.def.aggroRange)
+    const target = this.passive ? null : ctx.world.nearestHostile(me, this.def.aggroRange)
 
     switch (this.state) {
       case 'windup':

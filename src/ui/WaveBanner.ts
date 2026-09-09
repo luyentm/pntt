@@ -64,6 +64,10 @@ export class WaveBanner {
   hide(): void {
     this.root.classList.remove('is-open', 'is-final')
     this.bannerTimer = 0
+    // Xoá luôn số đếm đợt: nó nằm ngoài thẻ nên `is-open` không che được nó, và
+    // "ĐỢT 1 / 6" treo ở góc phải trong chế độ trình diễn là nói sai
+    this.counter.textContent = ''
+    this.lastState = ''
   }
 
   /**
