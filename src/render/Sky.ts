@@ -42,7 +42,7 @@ void main() {
   col = mix(col, uBottom, lower);
 
   float sun = max(dot(dir, normalize(uSunDir)), 0.0);
-  col += uSunColor * pow(sun, uSunPower) * 0.55;
+  col += uSunColor * pow(sun, uSunPower) * 0.7;
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -72,7 +72,9 @@ export function createSky(scene: Scene, sunDir: Vector3): Sky {
       uBottom: { value: new Color(Palette.troiDuoi) },
       uSunDir: { value: sunDir.clone() },
       uSunColor: { value: new Color(Palette.nangSom) },
-      uSunPower: { value: 48 },
+      // 26 chứ không 48: quầng nắng rộng hơn nên trời có không khí, thay vì một
+      // đốm sáng bé xíu trên nền gradient phẳng
+      uSunPower: { value: 26 },
     },
   })
 
@@ -83,9 +85,17 @@ export function createSky(scene: Scene, sunDir: Vector3): Sky {
   mesh.name = 'sky'
   scene.add(mesh)
 
-  // Dải sương mù bám sát tầm nhìn thực tế của camera (~20-90 unit). Đặt xa quá
-  // thì cảnh phẳng lì không có chiều sâu, mà còn để lộ rìa bản đồ.
-  scene.fog = new Fog(Palette.suongMu, 30, 100)
+  // Sương bắt đầu ở 44 chứ không 30, và màu ĐẬM hơn chân trời.
+  //
+  // Bắt đầu ở 30 thì cả tiền cảnh đã bị xám hoá — sân đấu rộng khoảng 30 unit nên
+  // gần như toàn bộ những gì người chơi đang nhìn đều nằm trong sương, và đó là
+  // nguyên nhân lớn nhất của cảm giác "nhạt nhoà". Đẩy ra 44 thì vùng chiến đấu
+  // trong veo, còn rừng và núi xa vẫn tan vào sương.
+  //
+  // Và màu sương phải ĐẬM hơn màu trời ở chân trời. Sương sáng bằng trời thì địa
+  // hình xa lẫn hẳn vào nền thành một dải sữa; sương đậm hơn thì rừng xa hiện lên
+  // thành từng lớp bóng — đúng cái chất "núi non trùng điệp" của sơn môn.
+  scene.fog = new Fog(Palette.suongSau, 44, 165)
 
   return {
     mesh,
@@ -96,7 +106,9 @@ export function createSky(scene: Scene, sunDir: Vector3): Sky {
       ;(material.uniforms.uTop!.value as Color).set(top)
       ;(material.uniforms.uHorizon!.value as Color).set(horizon)
       ;(material.uniforms.uBottom!.value as Color).set(bottom)
-      if (scene.fog) (scene.fog as Fog).color.set(horizon)
+      // Sương lấy màu chân trời rồi LÀM ĐẬM: bằng đúng màu trời thì địa hình xa
+      // lẫn hẳn vào nền thành một dải sữa
+      if (scene.fog) (scene.fog as Fog).color.set(horizon).multiplyScalar(0.78)
     },
     dispose() {
       scene.remove(mesh)

@@ -1,9 +1,17 @@
-import { BloomEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing'
+import {
+  BloomEffect,
+  BrightnessContrastEffect,
+  EffectComposer,
+  EffectPass,
+  HueSaturationEffect,
+  RenderPass,
+  VignetteEffect,
+} from 'postprocessing'
 import { HalfFloatType, type PerspectiveCamera, type Scene, type WebGLRenderer } from 'three'
 import { EdgeOutlineEffect } from './effects/EdgeOutlineEffect'
 
 /**
- * Chuỗi hậu xử lý: RenderPass -> viền -> bloom.
+ * Chuỗi hậu xử lý: RenderPass -> (viền + chấm màu + vignette) -> bloom.
  *
  * Bloom phải nằm ở EffectPass RIÊNG vì nó là CONVOLUTION effect — postprocessing
  * không cho gộp effect có tích chập với effect thường vào cùng một pass.
@@ -16,6 +24,10 @@ export class Composer {
   readonly composer: EffectComposer
   readonly outline: EdgeOutlineEffect
   readonly bloom: BloomEffect
+  /** Tương phản — thứ chữa "nhạt nhoà" hiệu quả nhất trên một đồng xu. */
+  readonly contrast: BrightnessContrastEffect
+  readonly saturation: HueSaturationEffect
+  readonly vignette: VignetteEffect
 
   /** Tắt hẳn hậu xử lý — vẽ thẳng ra màn hình. Dùng để so sánh và để cứu fps. */
   enabled = true
@@ -42,7 +54,22 @@ export class Composer {
       silhouetteFade: [45, 95],
       grazing: [0.2, 0.55],
     })
-    this.composer.addPass(new EffectPass(camera, this.outline))
+    // Chấm màu: gộp CHUNG một pass với viền.
+    //
+    // Ba effect này đều không có tích chập nên postprocessing hợp chúng vào cùng
+    // một shader với viền — thêm cả ba gần như không tốn gì, trong khi đây lại là
+    // phần chữa "nhạt nhoà" mạnh nhất. Ánh sáng dựng lại hình khối, còn chấm màu
+    // mới kéo dải sáng ra hết khung.
+    this.contrast = new BrightnessContrastEffect({ brightness: 0, contrast: 0.1 })
+    // Lowpoly không có texture nên MÀU là toàn bộ thông tin bề mặt. Thêm bão hoà
+    // để cỏ ra cỏ và đá ra đá, thay vì cùng một dải xám-lục.
+    this.saturation = new HueSaturationEffect({ saturation: 0.15 })
+    // Vignette nhẹ: dồn mắt vào giữa khung, nơi nhân vật luôn ở đó
+    this.vignette = new VignetteEffect({ offset: 0.32, darkness: 0.38 })
+
+    this.composer.addPass(
+      new EffectPass(camera, this.outline, this.contrast, this.saturation, this.vignette),
+    )
 
     this.bloom = new BloomEffect({
       // Nhẹ tay: linh châu/VFX cần có hào quang mềm, không phải một cục sáng cháy

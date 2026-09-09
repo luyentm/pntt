@@ -54,6 +54,39 @@ export class DebugPanel {
         game.lighting.shadowsEnabled = v
       })
 
+    // Chấm màu để tinh chỉnh bằng MẮT, không đoán số — hệt cách đã làm với viền
+    const grade = this.gui.addFolder('Chấm màu')
+    grade.add(game.composer.contrast, 'contrast', -0.5, 0.6, 0.01).name('Tương phản')
+    grade.add(game.composer.contrast, 'brightness', -0.3, 0.3, 0.01).name('Độ sáng')
+    grade.add(game.composer.saturation, 'saturation', -0.5, 0.8, 0.01).name('Bão hoà')
+    grade.add(game.composer.vignette, 'darkness', 0, 1, 0.02).name('Vignette: đậm')
+    grade.add(game.composer.vignette, 'offset', 0, 1, 0.02).name('Vignette: rộng')
+    grade
+      .add({ e: game.renderer.gl.toneMappingExposure }, 'e', 0.6, 1.6, 0.01)
+      .name('Phơi sáng')
+      .onChange((v: number) => {
+        game.renderer.gl.toneMappingExposure = v
+      })
+    grade.close()
+
+    const lights = this.gui.addFolder('Ánh sáng')
+    lights.add(game.lighting.sun, 'intensity', 0, 4, 0.05).name('Nắng')
+    lights.add(game.lighting.hemi, 'intensity', 0, 2, 0.05).name('Môi trường')
+    lights.add(game.lighting.rim, 'intensity', 0, 2, 0.05).name('Đèn viền')
+    lights
+      .add({ near: (game.three.fog as { near: number }).near }, 'near', 5, 120, 1)
+      .name('Sương: từ')
+      .onChange((v: number) => {
+        ;(game.three.fog as { near: number }).near = v
+      })
+    lights
+      .add({ far: (game.three.fog as { far: number }).far }, 'far', 40, 320, 2)
+      .name('Sương: đến')
+      .onChange((v: number) => {
+        ;(game.three.fog as { far: number }).far = v
+      })
+    lights.close()
+
     const outline = this.gui.addFolder('Nét viền')
     const o = game.composer.outline
     outline.add(o, 'thickness', 0.5, 3, 0.05).name('Độ dày')

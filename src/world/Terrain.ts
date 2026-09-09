@@ -196,16 +196,42 @@ export class Terrain implements HeightField {
     let p = 0
     let c = 0
 
-    // Ghi một đỉnh. Màu suy từ cao độ + độ dốc: chỗ dốc thành đá lộ, chỗ cao
-    // thành cỏ khô, chỗ trũng thành cỏ đậm -> map có "chất" mà không cần texture.
+    // Ghi một đỉnh. Màu suy từ cao độ + độ dốc + NHIỄU HAI TẦN SỐ.
+    //
+    // Cao độ và độ dốc là chưa đủ, và đó là một lỗi thật đã thấy trên màn hình:
+    // cả luyện võ trường nằm trong VÙNG PHẲNG, nên `y` và `steep` đều là hằng số
+    // ở đó — cả sân ra đúng MỘT màu xanh, và không cấu hình ánh sáng nào chữa được
+    // một mặt phẳng một màu. Đó chính là nguyên nhân lớn nhất của cảm giác
+    // "nhạt nhoà", chứ không phải cường độ đèn.
+    //
+    // Hai tần số: một dải rộng (~0.02) cho từng vạt cỏ đậm nhạt khác nhau, và một
+    // dải hẹp (~0.09) cho lấm tấm trong từng vạt. Cùng một `Noise2D` đã dùng cho
+    // cao độ nhưng LỆCH GỐC, nếu không thì vạt màu sẽ trùng khít với gò đất và
+    // trông như tô theo đường bình độ.
     const push = (x: number, y: number, z: number, steep: number): void => {
       positions[p++] = x
       positions[p++] = y
       positions[p++] = z
 
+      const broad = this.noise.fbm(x * 0.02 + 610, z * 0.02 - 430, 3)
+      const fine = this.noise.fbm(x * 0.09 - 210, z * 0.09 + 880, 2)
+      // Tần số hẹp được ăn NẶNG hơn: nó mới là thứ biến thiên trong phạm vi một
+      // sân đấu. Tần số rộng gần như là hằng số ở quy mô đó nên chỉ đóng vai một
+      // sắc nền cho từng vùng bản đồ.
+      const patch = broad * 0.45 + fine * 0.55
+
       const t = Math.min(1, Math.max(0, (y + 3) / 14))
       if (t < 0.45) tmp.copy(coDam).lerp(co, t / 0.45)
       else tmp.copy(co).lerp(coKho, (t - 0.45) / 0.55)
+
+      // Vạt dương ngả cỏ khô, vạt âm ngả cỏ đậm — biến thiên cả sắc lẫn độ sáng,
+      // không chỉ làm sáng/tối một màu. Đổi độ sáng suông thì mặt đất trông như
+      // bị bẩn, còn đổi cả sắc thì ra vạt cỏ.
+      // Hệ số 2.2/2.4 dò bằng cách ĐO: ở 0.5/0.62 thì dải sáng trong sân chỉ có
+      // 0.008 — tức là mắt không thấy gì và cả sân vẫn ra một màu.
+      if (patch > 0) tmp.lerp(coKho, Math.min(1, patch * 2.2))
+      else tmp.lerp(coDam, Math.min(1, -patch * 2.4))
+
       tmp.lerp(da, Math.min(1, Math.max(0, (steep - 0.3) / 0.4)))
 
       colors[c++] = tmp.r

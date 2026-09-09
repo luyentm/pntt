@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, PCFShadowMap, SRGBColorSpace, WebGLRenderer } from 'three'
+import { NeutralToneMapping, PCFShadowMap, SRGBColorSpace, WebGLRenderer } from 'three'
 
 /**
  * Bọc WebGLRenderer: lo DPR, resize, và tỉ lệ phân giải để hạ tải khi cần.
@@ -30,8 +30,14 @@ export class Renderer {
       stencil: false,
     })
     this.gl.outputColorSpace = SRGBColorSpace
-    this.gl.toneMapping = ACESFilmicToneMapping
-    this.gl.toneMappingExposure = 1.05
+    // Neutral (Khronos PBR Neutral) thay cho ACES.
+    //
+    // ACES nén cao sáng bằng cách kéo màu về phía trắng, nên với đồ hoạ lowpoly —
+    // nơi MÀU là toàn bộ thông tin bề mặt vì không có texture — nó vừa làm nhạt
+    // màu vừa khiến cỏ cháy trắng ngay khi tăng nắng. Neutral giữ sắc tới sát
+    // ngưỡng, nên đẩy được tương phản mà cỏ vẫn ra cỏ.
+    this.gl.toneMapping = NeutralToneMapping
+    this.gl.toneMappingExposure = 1.12
     this.gl.shadowMap.enabled = true
     // PCFSoftShadowMap đã bị deprecate ở three 0.185
     this.gl.shadowMap.type = PCFShadowMap

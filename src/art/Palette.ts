@@ -64,6 +64,32 @@ export const Palette = {
   troiDuoi: 0x6b7b7a,
   suongMu: 0x9fb2be,
   nangSom: 0xffe8c2,
+
+  // --- Ánh sáng ---
+  /** Nắng chính: vàng ấm, hơi ngả kim. */
+  nangKim: 0xffdca6,
+  /**
+   * Ánh trời cho hemisphere.
+   *
+   * BỚT bão hoà có chủ ý. Thử 0x5b7fa6 (xanh đậm) trước: mặt chibi chuyển sang
+   * xám-lục vì ánh môi trường xanh cộng đèn viền teal triệt hết sắc da ấm — mà
+   * mặt nhân vật là thứ không được phép mất màu trong một game chibi.
+   */
+  troiSang: 0x8296ab,
+  /**
+   * Ánh dội từ đất.
+   *
+   * Sáng và ấm, không phải nâu tối. Mặt nhân vật gần như thẳng đứng nên nó nhận
+   * khoảng một nửa ánh trời và một nửa ánh đất — để ánh đất tối thì cả khuôn mặt
+   * chìm thành một khối xám bất kể ánh trời màu gì.
+   */
+  datDoi: 0x7d6a52,
+  /** Đèn viền linh khí, tách nhân vật khỏi nền. */
+  vienLinh: 0x86cbd6,
+  /** Sương xa: đậm hơn chân trời nên núi xa đọc ra là núi, không phải sữa. */
+  suongSau: 0x7b96a6,
+  /** Lửa trong đài luyện đan. */
+  luaDan: 0xff9a4a,
 } as const
 
 export type PaletteKey = keyof typeof Palette

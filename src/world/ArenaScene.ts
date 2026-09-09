@@ -1,4 +1,4 @@
-import { Mesh, Vector3, type BufferGeometry, type Object3D } from 'three'
+import { Mesh, PointLight, Vector3, type BufferGeometry, type Object3D } from 'three'
 import { canCraft, craft } from '@/game/Alchemy'
 import { clearSave, saveGame, type SaveData, type SaveStorage } from '@/game/SaveGame'
 import { WaveDirector, type WaveActions } from '@/game/WaveDirector'
@@ -892,6 +892,21 @@ export class ArenaScene implements GameScene {
     altar.position.set(altarX, this.groundAt(altarX, altarZ), altarZ)
     this.add(altar)
     this.collision.addStatic(altarX, altarZ, 1.62)
+
+    // Hai nguồn sáng điểm làm ĐIỂM NHẤN, không phải để soi cảnh.
+    //
+    // Ánh sáng đều khắp thì không có chỗ nào đáng nhìn. Một đốm lửa ấm ở đài
+    // luyện đan và một quầng linh khí lạnh giữa sân cho cảnh hai cực nhiệt độ, và
+    // mắt tự đi từ cực này sang cực kia. `distance` đặt hẹp nên chúng không rọi
+    // ra cả bản đồ — chỉ vùng quanh chính nó sáng lên.
+    const brazier = new PointLight(Palette.luaDan, 3.4, 9, 2)
+    brazier.position.set(altarX, this.groundAt(altarX, altarZ) + 1.5, altarZ)
+    this.add(brazier)
+
+    // Quầng linh khí trên mặt sân: nó cũng là thứ tách chân nhân vật khỏi nền đá
+    const courtyard = new PointLight(Palette.linh, 2.2, 16, 2.2)
+    courtyard.position.set(0, this.groundAt(0, 0) + 3.4, 0)
+    this.add(courtyard)
   }
 
   private placeVegetation(rng: SceneContext['rng']): void {

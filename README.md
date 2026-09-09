@@ -223,6 +223,57 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
 
+### Ánh sáng
+
+Cảnh ban đầu nhìn ra "nhạt nhoà": cỏ, đá và cột đều nằm trong **cùng một dải xám-lục
+hẹp**, bóng gần như không thấy, và không có gì tách nhân vật khỏi nền. Bốn nguyên nhân,
+sửa cả bốn — và nguyên nhân lớn nhất KHÔNG phải ánh sáng:
+
+- **Cả luyện võ trường ra đúng một màu, và đó là lỗi nội dung.** Màu terrain suy từ cao
+  độ và độ dốc, mà sân đấu nằm trong *vùng phẳng* nên cả hai đều là hằng số ở đó. Không
+  cấu hình ánh sáng nào chữa được một mặt phẳng một màu. Thêm nhiễu màu hai tần số vào
+  vertex color: một dải rộng cho từng vạt cỏ, một dải hẹp cho lấm tấm trong vạt. Đo được:
+  dải sáng trong sân từ **0.008 lên 0.049**. Lần đầu tôi đặt hệ số 0.5/0.62 và *nghĩ* là
+  xong — phải đo mới thấy mắt không thể thấy gì ở mức đó.
+- **Hemisphere quá mạnh** (0.85 so với nắng 1.75). Nó rọi từ cả trên và dưới nên không
+  mặt nào thật sự nằm trong tối: mọi khối mất chiều, và đổ bóng chỉ còn một vệt xám nhạt.
+  Nay 0.46 / nắng 1.95, và hai màu của hemisphere **đối nhau về nhiệt độ** (trời xanh
+  lạnh, đất nâu ấm) nên mặt hướng lên và hướng xuống khác nhau cả về màu, không chỉ độ
+  sáng — đó là thứ làm khối lowpoly có chất liệu thay vì trông như nhựa xám.
+- **Sương bắt đầu ở 30 unit**, mà sân đấu rộng khoảng 30 — gần như toàn bộ những gì
+  người chơi đang nhìn đều nằm trong sương. Đẩy ra 44–165, và làm màu sương **đậm hơn**
+  chân trời: sương sáng bằng trời thì địa hình xa lẫn vào nền thành một dải sữa, sương
+  đậm hơn thì rừng xa hiện lên thành từng lớp bóng.
+- **Không có chấm màu.** Thêm tương phản + bão hoà + vignette, gộp CHUNG một pass với
+  viền (cả ba đều không có tích chập nên postprocessing hợp vào cùng một shader).
+
+Thêm mới:
+
+- **Đèn viền linh khí** — directional thứ hai, không đổ bóng, rọi từ phía sau và thấp,
+  màu teal. Đây là nguồn quan trọng nhất về mặt cảm giác "tu tiên": nhân vật và quái
+  luôn có một đường sáng lạnh ở rìa tách khỏi hậu cảnh. Gần như miễn phí vì không có bóng.
+- **Hai đèn điểm làm điểm nhấn**, không phải để soi cảnh: một đốm lửa ấm ở đài luyện đan
+  và một quầng linh khí lạnh giữa sân. Ánh sáng đều khắp thì không có chỗ nào đáng nhìn.
+- **Nắng hạ từ 51° xuống ~42°** cho bóng dài — bóng dài là thứ nói cho mắt biết mặt đất
+  có hướng.
+- **Tone mapping đổi từ ACES sang Neutral** (Khronos PBR Neutral). ACES nén cao sáng bằng
+  cách kéo màu về phía trắng; với lowpoly — nơi MÀU là toàn bộ thông tin bề mặt vì không
+  có texture — nó vừa làm nhạt màu vừa khiến cỏ cháy trắng ngay khi tăng nắng.
+
+Hai chỗ sai mà chỉ thấy được khi xem từng khung hình:
+
+- Nắng 2.35 làm **cỏ và nhân vật cháy trắng**; ngược lại hemisphere 0.38 với màu trời đậm
+  làm **mặt chibi chuyển sang xám-lục** — ánh môi trường xanh cộng đèn viền teal triệt hết
+  sắc da ấm. Mặt nhân vật là thứ không được phép mất màu trong một game chibi, nên màu
+  trời của hemisphere phải BỚT bão hoà và màu đất phải sáng-ấm chứ không nâu tối (mặt gần
+  như thẳng đứng nên nó nhận khoảng nửa ánh trời nửa ánh đất).
+- three r155+ dùng đèn **đúng vật lý**: `PointLight.intensity` là candela và `decay: 2` là
+  nghịch đảo bình phương, nên 9 candela ở cách 1,5 unit đã cháy trắng cả cái đài. Giá trị
+  dùng được là 3.4 và 2.2.
+
+Mọi con số trên đều dò bằng **mắt trong game** qua nhóm "Ánh sáng" và "Chấm màu" của bảng
+debug, không tính ra — khoảng dùng được hẹp hơn tôi tưởng.
+
 ### Tự ngắm
 
 - **Bật mặc định.** Ngắm bằng chuột đòi người chơi làm ba việc cùng lúc: bấm WASD để
