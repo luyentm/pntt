@@ -17,11 +17,14 @@ export class IsoCamera {
   yaw = Math.PI * 0.22
   // ~38 độ: đủ dốc để nhìn bao quát khi đông quái, đủ thoải để thấy hông
   // nhân vật và chiều sâu của cảnh (nhìn thẳng đứng làm mất hết khối)
-  pitch = 0.66
-  distance = 30
+  pitch = 0.62
+  // 17 unit: nhân vật chiếm ~10% chiều cao màn hình. Xa hơn (thử 30) thì chibi
+  // chỉ còn ~35px và mất hết chi tiết áo/mặt — mà nhân vật chính là thứ đáng nhìn
+  // nhất của một game chibi.
+  distance = 17
 
-  minDistance = 14
-  maxDistance = 58
+  minDistance = 9
+  maxDistance = 34
   // minPitch thấp để người chơi hạ camera ngắm được chân trời và vòm trời;
   // maxPitch cao để nhìn gần như thẳng đứng khi cần đọc thế trận đại chiến
   minPitch = 0.3

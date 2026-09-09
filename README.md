@@ -26,7 +26,8 @@ Mở http://localhost:5173
 | Kéo chuột phải | Xoay camera quanh nhân vật |
 | Cuộn chuột | Zoom |
 | `` ` `` | Ẩn/hiện bảng debug |
-| WASD / phím mũi tên | Di chuyển *(từ M1)* |
+| WASD / phím mũi tên | Di chuyển (theo hướng camera) |
+| Giữ Shift | Đi chậm |
 | `1`–`6` | Pháp thuật *(từ M4)* |
 
 ## Kiến trúc
@@ -45,6 +46,15 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
   canvas rất tệ).
 - **Nội dung là data** (`game/data/`): thêm quái / skill / đan dược = thêm một entry,
   không viết system mới.
+- **Mỗi nhân vật là MỘT `SkinnedMesh`** (`art/ChibiRig.ts`): từng khối được gắn cứng
+  vào đúng một xương (rigid skinning, `skinWeight = 1`). Cách animate không đổi —
+  vẫn xoay khớp bằng số — nhưng cả nhân vật chỉ tốn **1 draw call** thay vì ~10 nếu
+  dùng cây `Group`. Với "đại chiến" hàng chục quái thì đó là khác biệt giữa 80 và
+  800 draw call.
+- **Animation không dùng file**: clip là keyframe sparse được biên dịch sang
+  `Float32Array` lúc nạp module (`anim/Clip.ts`), lúc chạy chỉ đọc số và lerp trong
+  buffer cấp phát sẵn → không sinh rác mỗi frame. Clip lưu ĐỘ LỆCH so với thế nghỉ,
+  nên sửa tỉ lệ nhân vật trong `CHIBI_REST` không làm hỏng animation.
 - **Màn chơi qua interface `GameScene`** (`world/Scene.ts`) — điểm cắm để thêm các
   chương cốt truyện về sau mà không phải sửa lõi.
 
@@ -72,10 +82,30 @@ nếp gấp hình học thật, vẽ hết ra thì mặt đất thành lưới w
 3. **Tan theo khoảng cách** — nếp gấp tan sớm (16→42), silhouette giữ xa hơn
    (45→95) vì nó là thứ định hình bóng cây/núi trên nền sương.
 
+## Ghi chú kỹ thuật đáng nhớ
+
+Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò lại:
+
+- `composer.setSize(w, h, false)` — thiếu tham số thứ ba thì three ghi
+  `canvas.style` bằng px và đè mất CSS `width: 100%`.
+- `Renderer` đo kích thước từ **canvas** qua `ResizeObserver`, không từ
+  `window.innerWidth` + event `resize` (canvas do CSS bố cục nên đổi kích thước
+  trong nhiều trường hợp window không phát event, và đọc `innerWidth` lúc đang
+  resize thì sai vĩnh viễn).
+- `renderer.info.autoReset = false` + `beginFrame()` — nếu không thì draw call đọc
+  ra luôn bằng 1, vì EffectComposer gọi `renderer.render()` nhiều lần mỗi frame.
+- Cylinder có **mặt trên kín**, nên xếp đĩa lồng nhau thì đĩa càng rộng phải càng
+  thấp; ngược lại nó che kín đĩa bên trong (xem `buildStoneFloor`).
+- Tóc chibi là **vòm kín + tấm mặt bán kính lớn hơn**. Mũ cầu đơn thì che mất mắt;
+  hai nửa cầu trước/sau thì lệch mép ở thái dương.
+- Nhân vật hướng **+Z**. Trong animation: `rx` âm = đưa chi ra trước, gập đầu gối =
+  `rx` dương, gập khuỷu = `rx` âm.
+- Cự ly camera **17 unit**. Thử 30 thì chibi chỉ còn ~35px, mất hết chi tiết.
+
 ## Tiến độ
 
 - [x] **M0** Scaffold — renderer, camera iso, trời + sương mù, vòng lặp 60Hz, outline, bloom, debug panel
-- [ ] **M1** Hàn Lập chibi + di chuyển
+- [x] **M1** Hàn Lập chibi + di chuyển — rig xương, clip idle/walk/run, controller theo hướng camera, va chạm
 - [ ] **M2** Map sơn môn (terrain thật)
 - [ ] **M3** Combat cơ bản
 - [ ] **M4** Pháp thuật & VFX
