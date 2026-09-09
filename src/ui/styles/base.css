@@ -1,0 +1,64 @@
+/* Theme: mực nho trên lụa xanh — bảng màu dùng chung cho toàn bộ UI */
+:root {
+  --muc: #14181d;
+  --muc-nhat: #2a323c;
+  --lua: #e8e2d0;
+  --luc: #6fae8f;
+  --luc-dam: #2f6b52;
+  --kim: #d9b154;
+  --huyet: #c4543f;
+  --lam: #5b8fc7;
+  --tim: #9a6fb0;
+
+  --ui-font: 'Noto Sans', 'Helvetica Neue', -apple-system, system-ui, sans-serif;
+  --ui-radius: 6px;
+  --ui-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0b0e12;
+  font-family: var(--ui-font);
+  color: var(--lua);
+  -webkit-font-smoothing: antialiased;
+}
+
+#game-canvas {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  outline: none;
+}
+
+/* Overlay UI: mặc định không ăn chuột, từng panel tự bật lại pointer-events */
+#ui-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 10;
+}
+#ui-root > * { pointer-events: auto; }
+
+#boot {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: #0b0e12;
+  color: var(--luc);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  transition: opacity 0.45s ease;
+}
+#boot.hidden { opacity: 0; pointer-events: none; }
