@@ -5,7 +5,7 @@ import { chibiRadius, type Chibi } from '@/art/buildChibi'
 import type { Input } from '@/core/Input'
 import type { IsoCamera } from '@/render/IsoCamera'
 import type { CollisionWorld } from './Collision'
-import { arenaGroundHeight } from './groundHeight'
+import type { HeightField } from './Terrain'
 
 /** Tốc độ chạy mặc định (world unit / giây). */
 const RUN_SPEED = 4.3
@@ -43,6 +43,7 @@ function turnToward(from: number, to: number, maxStep: number): number {
 export class Player {
   readonly chibi: Chibi
   readonly radius: number
+  private ground: HeightField | null = null
 
   /** Vị trí trên mặt phẳng. Object riêng để truyền thẳng vào CollisionWorld.resolve. */
   readonly pos = { x: 0, z: 0 }
@@ -62,6 +63,15 @@ export class Player {
     this.chibi.animator.play(IDLE)
   }
 
+  /** Gắn nguồn cao độ. Phải gọi trước spawn(). */
+  setGround(ground: HeightField): void {
+    this.ground = ground
+  }
+
+  private groundHeight(x: number, z: number): number {
+    return this.ground ? this.ground.heightAt(x, z) : 0
+  }
+
   get height(): number {
     return this.chibi.height
   }
@@ -69,7 +79,7 @@ export class Player {
   spawn(x: number, z: number, facing = 0): void {
     this.pos.x = x
     this.pos.z = z
-    this.y = arenaGroundHeight(x, z)
+    this.y = this.groundHeight(x, z)
     this.facing = facing
     this.vx = 0
     this.vz = 0
@@ -122,9 +132,9 @@ export class Player {
     // tảng đá thì nhân vật phải đứng yên chứ không được chạy tại chỗ
     this.speed = Math.hypot(this.vx, this.vz)
 
-    // M2 sẽ đổi sang Terrain.heightAt() lấy mẫu đúng lưới của mesh; hiện tại
-    // dùng hàm liên tục, chênh so với mặt mesh dưới 5 cm và bằng 0 ở vùng giữa
-    this.y = arenaGroundHeight(this.pos.x, this.pos.z)
+    // Terrain.heightAt() nội suy trên đúng tam giác đang được vẽ, nên bàn chân
+    // nằm CHÍNH XÁC trên mặt đất — không lún, không lơ lửng
+    this.y = this.groundHeight(this.pos.x, this.pos.z)
 
     this.updateAnimation()
     this.applyTransform()

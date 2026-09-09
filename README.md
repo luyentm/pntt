@@ -58,6 +58,13 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
 - **Màn chơi qua interface `GameScene`** (`world/Scene.ts`) — điểm cắm để thêm các
   chương cốt truyện về sau mà không phải sửa lõi.
 
+### Prop lặp lại dùng `InstancedMesh`
+
+`art/PropBatch.ts` gộp nhiều bản của cùng một prop vào một `InstancedMesh`. Đánh
+đổi: mọi bản dùng chung geometry nên biến thể chỉ còn ở tỉ lệ và góc xoay — bù lại
+bằng cách dựng vài **biến thể geometry**, mỗi biến thể một batch. Kết quả: 276 cây
+tùng / khóm tre / hòn đá tốn **9 draw call** thay vì 276.
+
 ### Thư viện
 
 `three` 0.185.1 · `postprocessing` (outline + bloom) · `yuka` (AI + navmesh) ·
@@ -101,12 +108,24 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - Nhân vật hướng **+Z**. Trong animation: `rx` âm = đưa chi ra trước, gập đầu gối =
   `rx` dương, gập khuỷu = `rx` âm.
 - Cự ly camera **17 unit**. Thử 30 thì chibi chỉ còn ~35px, mất hết chi tiết.
+- **Kiến trúc phải theo tỉ lệ CHIBI, không theo tỉ lệ người thật.** Cổng phái cao
+  5.2 và cột đá cao 4.4 (đúng tỉ lệ thật) làm nhân vật cao 1.1 trông như con sâu và
+  chắn mất khung hình. Cổng 3.2, cột 2.9, đèn 1.6 mới đúng.
+- `Terrain` tự dựng lưới thay vì dùng `PlaneGeometry`, để biết chắc mỗi ô chia tam
+  giác theo đường chéo nào → `heightAt()` nội suy trên đúng tam giác đang được vẽ,
+  bàn chân không bao giờ lún hay lơ lửng (có test đối chiếu trực tiếp với mesh).
+- Vùng phẳng của terrain phải **neo theo lưới** (`flatRadius + 1.5·cell`), vì
+  `heightAt()` nội suy từ đỉnh lưới nên ô vắt qua biên sẽ nghiêng lấn vào trong.
+- `flatten` của terrain dùng **smoothstep**; tuyến tính để lại nếp gấp hiện lên
+  thành một vành tròn trông như bờ cao nguyên nhân tạo.
+- Mái kiến trúc phải là **hai tấm dốc chụm sống nóc**; một hộp phẳng nằm ngang đọc
+  ra là "tấm ván xanh" chứ không phải mái.
 
 ## Tiến độ
 
 - [x] **M0** Scaffold — renderer, camera iso, trời + sương mù, vòng lặp 60Hz, outline, bloom, debug panel
 - [x] **M1** Hàn Lập chibi + di chuyển — rig xương, clip idle/walk/run, controller theo hướng camera, va chạm
-- [ ] **M2** Map sơn môn (terrain thật)
+- [x] **M2** Map sơn môn — terrain noise, cổng phái, đèn đá, đài luyện đan, rừng tùng + khóm tre (instanced)
 - [ ] **M3** Combat cơ bản
 - [ ] **M4** Pháp thuật & VFX
 - [ ] **M5** Tu luyện & đột phá cảnh giới
