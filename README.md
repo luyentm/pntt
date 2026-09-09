@@ -22,9 +22,15 @@ Mở http://localhost:5173
 ## Triển khai (GitHub Pages)
 
 Đẩy lên `main` là tự deploy — `.github/workflows/deploy.yml` chạy test, build rồi
-publish. **Cần bật một lần** trong repo: *Settings → Pages → Source* chọn
-**GitHub Actions** (không phải "Deploy from a branch"). Sau đó site ở
-`https://<user>.github.io/pntt/`.
+publish. Site ở `https://<user>.github.io/pntt/`.
+
+Workflow tự bật Pages ở chế độ đúng (`configure-pages` với `enablement: true`), nên
+không phải vào Settings bấm gì. **Lý do phải có tham số đó**: repo mặc định ở chế độ
+*Deploy from a branch* (`main`, gốc), và ở chế độ đó Pages phục vụ **mã nguồn thô** —
+`index.html` trỏ vào `./src/main.ts`, mà TypeScript thì trình duyệt không chạy được.
+Lượt deploy đầu tiên đã xanh mà site vẫn hỏng đúng vì thế: hai deploy chạy song song
+và bản legacy thắng. Đây là thay đổi cài đặt trên repo, không chỉ là code — muốn quay
+lại thì *Settings → Pages → Source*.
 
 Ba điểm phải đúng để chạy được trên Pages, và đều đã xử lý:
 
@@ -33,6 +39,8 @@ Ba điểm phải đúng để chạy được trên Pages, và đều đã xử
   và 404 hết. Đóng cứng `/pntt/` thì chạy được Pages nhưng hỏng `vite preview`, hỏng
   khi mở `dist` từ ổ đĩa, và hỏng luôn nếu repo đổi tên — `./` đúng ở cả bốn.
   An toàn vì đây là một trang duy nhất, không có router lồng đường dẫn.
+- **Pages phải ở chế độ Actions, không phải branch.** Xem đoạn trên — đây là chỗ
+  duy nhất mà "workflow xanh" không có nghĩa là "site chạy".
 - **`public/.nojekyll`.** Không cần cho đường deploy bằng Actions, nhưng cần ngay khi
   ai đó chuyển sang deploy từ branch — Jekyll bỏ qua mọi thứ bắt đầu bằng `_`.
 - **Bảng debug ẩn sẵn ở bản phát hành** (`import.meta.env.PROD`), vẫn mở được bằng
