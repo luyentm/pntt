@@ -29,6 +29,12 @@ export class DebugPanel {
 
     const gfx = this.gui.addFolder('Hình ảnh')
     gfx
+      .add({ cap: game.loop.fpsCap }, 'cap', { '60 fps': 60, '120 fps': 120, 'Không khoá': 0 })
+      .name('Giới hạn fps')
+      .onChange((v: number) => {
+        game.loop.fpsCap = v
+      })
+    gfx
       .add({ scale: game.renderer.resolutionScale }, 'scale', 0.5, 1, 0.05)
       .name('Tỉ lệ phân giải')
       .onChange((v: number) => {

@@ -47,7 +47,8 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
   animation là rig `Group` lồng nhau (không xương); âm thanh sinh bằng WebAudio.
   Bundle ~206 KB gz, load tức thì, chạy offline.
 - **Vòng lặp fixed-timestep 60Hz + nội suy** (`core/Loop.ts`) — combat và AI xác định,
-  không phụ thuộc fps.
+  không phụ thuộc fps. Số lần **vẽ** khoá ở 60 fps mặc định (`loop.fpsCap`), đổi được
+  trong bảng debug → *Hình ảnh → Giới hạn fps*.
 - **Va chạm tự viết**, mọi thứ là hình tròn trên mặt phẳng XZ + spatial hash.
   Không dùng physics engine: nhẹ hơn ~1 MB wasm và deterministic nên test được.
 - **UI là overlay DOM/CSS**, không vẽ chữ trong canvas (tiếng Việt có dấu trong
@@ -162,6 +163,25 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thành một vành tròn trông như bờ cao nguyên nhân tạo.
 - Mái kiến trúc phải là **hai tấm dốc chụm sống nóc**; một hộp phẳng nằm ngang đọc
   ra là "tấm ván xanh" chứ không phải mái.
+
+### Hiệu năng
+
+- **Khoá 60 fps là mặc định, không phải "không khoá".** Trên màn Liquid Retina XDR
+  ProMotion, không khoá nghĩa là 120 fps trên một framebuffer 3134×2096 (6,57 MPx ở
+  DPR 2) có MSAA 4× trên target half-float cộng hai pass hậu xử lý — khoảng 790 MPx/s.
+  Trên laptop đó là quạt quay, đổi lấy một khác biệt mà đồ hoạ lowpoly gần như không
+  thể hiện ra được. Khoá 60 giảm **đúng một nửa** số lần vẽ và **không đổi một bước mô
+  phỏng nào** (đo trên bundle thật: 121 vs 240 lần vẽ trong 2 giây, cả hai đều 119
+  bước fixed).
+- Việc khoá fps **phải có dung sai** (`CAP_TOLERANCE = 0.2`). `requestAnimationFrame`
+  không bao giờ gọi đúng mốc; trên màn 60 Hz mà khoá 60 fps, một khung tới ở 16,5 ms
+  thay vì 16,67 ms sẽ bị bỏ và khung sau dồn thành 33 ms — tức là khoá 60 lại cho ra
+  30 fps giật. Có test cho đúng trường hợp này.
+- Khi trễ thì **neo mốc lại theo hiện tại**, không cộng dồn nợ. Cộng dồn thì sau một
+  lần đứng máy vòng lặp sẽ vẽ liên tiếp mấy khung để trả nợ — đúng lúc máy yếu nhất.
+- Bảng debug nhịp **5 lần/giây**, không phải mỗi khung: `listen()` của lil-gui ghi
+  thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
+  số mà mắt không đọc nổi.
 
 ### M5 + M6 — tu luyện và vật phẩm
 
