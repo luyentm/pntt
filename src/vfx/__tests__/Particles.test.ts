@@ -3,14 +3,34 @@ import { describe, expect, it } from 'vitest'
 import { Rng } from '@/core/Rng'
 import { ParticleLayer } from '../Particles'
 
-/** Lấy InstancedMesh của một dáng hạt. Kiểu hoá đúng thay vì cast bừa. */
-function batchMesh(layer: ParticleLayer, index = 0): InstancedMesh {
-  const mesh = layer.group.children[index]
-  if (!(mesh instanceof InstancedMesh)) throw new Error('không phải InstancedMesh')
+/**
+ * Lấy InstancedMesh của một dáng hạt THEO TÊN, không theo chỉ số.
+ *
+ * Theo chỉ số thì việc thêm một dáng mới vào giữa `SHAPES` sẽ làm test trỏ sang
+ * mesh khác và báo sai — đúng chuyện đã xảy ra khi thêm dáng `haze`.
+ */
+function batchMesh(layer: ParticleLayer, shape = 'shard'): InstancedMesh {
+  const mesh = layer.group.children.find((m) => m.name === `vfx:particles:${shape}`)
+  if (!(mesh instanceof InstancedMesh)) throw new Error(`không thấy mesh cho dáng "${shape}"`)
   return mesh
 }
 
 const dt = 1 / 60
+
+/** Tỉ lệ trung bình của các hạt khói đang sống, đọc từ ma trận instance. */
+function smokeScale(layer: ParticleLayer): number {
+  const mesh = batchMesh(layer, 'smoke')
+  const a = mesh.instanceMatrix.array
+  let sum = 0
+  let n = 0
+  for (let i = 0; i < mesh.count; i++) {
+    if ((a[i * 16 + 13] as number) < -100) continue
+    // Cột đầu của ma trận là trục X đã nhân tỉ lệ
+    sum += Math.abs(a[i * 16] as number)
+    n++
+  }
+  return n > 0 ? sum / n : 0
+}
 
 /** Bán kính trung bình của các hạt đang sống, đọc từ ma trận instance. */
 function radiusOf(layer: ParticleLayer): number {
@@ -114,5 +134,59 @@ describe('ParticleLayer', () => {
     layer.emit(0, 0, 0, new Rng(1), { count: 20, life: [5, 5] })
     layer.clear()
     expect(layer.activeCount).toBe(0)
+  })
+
+  describe('khói — dáng duy nhất phá quy tắc lowpoly', () => {
+    it('có hạn mức RIÊNG và rất chặt, không dùng chung với hạt khối đặc', () => {
+      // Khói trong suốt nên không ghi depth: N lớp chồng nhau là N lần fill.
+      // Đo được: cùng 768 hạt, chỉ đổi sang cộng sáng là đắt gấp 2,05 lần. Hạn
+      // mức là "ngân sách phủ màn hình", nên nó phải không thể bị vượt.
+      const layer = new ParticleLayer(256)
+      layer.emit(0, 0, 0, new Rng(1), { count: 500, shape: 'smoke', life: [9, 9] })
+      const smoke = layer.activeCount
+      expect(smoke).toBeLessThanOrEqual(48)
+
+      // Và phát đầy khói KHÔNG được lấn chỗ của hạt khối đặc
+      layer.emit(0, 0, 0, new Rng(2), { count: 100, shape: 'shard', life: [9, 9] })
+      expect(layer.activeCount).toBe(smoke + 100)
+    })
+
+    it('khói PHÌNH RA theo thời gian, không thu nhỏ', () => {
+      // Khói thật loang ra khi nguội; thu nhỏ đọc ra là hút vào, ngược hẳn
+      const layer = new ParticleLayer(64)
+      layer.emit(0, 0, 0, new Rng(3), {
+        count: 6,
+        shape: 'smoke',
+        life: [1, 1],
+        size: [1, 1],
+        speed: [0, 0],
+        gravity: 0,
+      })
+      const early = smokeScale(layer)
+      for (let i = 0; i < Math.round(0.45 / dt); i++) layer.update(dt)
+      expect(smokeScale(layer)).toBeGreaterThan(early)
+    })
+
+
+    it('haze và smoke là HAI hồ riêng, mỗi cái một hạn mức', () => {
+      // Cộng sáng không thể làm ra khói (nó chỉ thêm sáng), và alpha tối không
+      // làm được quầng lửa. Một vụ nổ thật có cả hai, nên phải là hai hồ.
+      const layer = new ParticleLayer(256)
+      layer.emit(0, 0, 0, new Rng(1), { count: 200, shape: 'haze', life: [9, 9] })
+      const haze = layer.activeCount
+      layer.emit(0, 0, 0, new Rng(2), { count: 200, shape: 'smoke', life: [9, 9] })
+      const total = layer.activeCount
+      expect(haze).toBeLessThanOrEqual(32)
+      expect(total - haze).toBeLessThanOrEqual(24)
+      // Tổng ngân sách phủ màn hình phải chặt
+      expect(total).toBeLessThanOrEqual(56)
+    })
+
+    it('không có camera thì vẫn chạy được, không nổ', () => {
+      // Test không có camera, và một lớp hiệu ứng không được đòi đồ hoạ mới chạy
+      const layer = new ParticleLayer(64)
+      layer.emit(0, 0, 0, new Rng(4), { count: 8, shape: 'smoke' })
+      expect(() => layer.update(dt)).not.toThrow()
+    })
   })
 })

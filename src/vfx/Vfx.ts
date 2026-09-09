@@ -369,6 +369,23 @@ export class Vfx {
             lift: 1.2,
             fade: 'pop',
           })
+          // Luồng kim quang cuộn lên theo cột sáng. CHỈ dùng `haze`, không dùng
+          // `smoke`: đột phá là ánh sáng bốc lên, không phải một vụ cháy — khói
+          // tối ở đây sẽ làm bẩn đúng khoảnh khắc đáng nhớ nhất của bản demo.
+          this.particles.emit(e.x, e.y + 0.3, e.z, this.rng, {
+            count: 20,
+            shape: 'haze',
+            color: Palette.kim,
+            color2: Palette.linh,
+            pattern: 'ring',
+            radius: 0.9,
+            speed: [0.6, 1.8],
+            size: [0.7, 1.5],
+            life: [1.3, 2.2],
+            gravity: 1.6,
+            drag: 1.8,
+            lift: 3.2,
+          })
           this.marks.spawn(e.x, e.y, e.z, 5.5, { color: Palette.kim, life: 3.2, opacity: 0.3 })
         }
         this.floats.spawn(
@@ -489,12 +506,46 @@ export class Vfx {
     })
     this.marks.spawn(x, y - 0.5, z, radius * 0.8, { color, life: 2.2, opacity: 0.28 })
 
+    // CHỈ hệ Hoả dùng billboard mềm. Đây là hai dáng duy nhất phá quy tắc
+    // lowpoly, nên chúng được dùng đúng ở nơi khối đặc không làm được. Băng vỡ
+    // và kim khí thì khối đặc diễn đúng hơn nên chúng không dùng.
+    if (element === 'hoa') {
+      // Loé sáng TRƯỚC: ngắn, sáng, ở ngay tâm nổ
+      this.particles.emit(x, y - 0.1, z, this.rng, {
+        count: 9,
+        shape: 'haze',
+        color: Palette.luaDan,
+        color2: Palette.vang,
+        pattern: 'dome',
+        speed: [1.2, 3],
+        size: [0.5, 0.95],
+        life: [0.28, 0.5],
+        gravity: 1.6,
+        drag: 3.4,
+        lift: 1.2,
+      })
+      // Khói SAU: tối, chậm, ở lại lâu hơn gấp ba
+      this.particles.emit(x, y - 0.2, z, this.rng, {
+        count: 10,
+        shape: 'smoke',
+        color: 0x39322c,
+        color2: 0x5a4c40,
+        pattern: 'dome',
+        speed: [0.6, 1.7],
+        size: [0.45, 0.9],
+        life: [1.1, 1.9],
+        gravity: 1,
+        drag: 2.6,
+        lift: 1.5,
+      })
+    }
+
     this.bus.emit('camera:shake', { magnitude: 0.14, duration: 0.2 })
   }
 
   update(dt: number, camera: PerspectiveCamera, width: number, height: number): void {
     this.breakthrough.update(dt)
-    this.particles.update(dt)
+    this.particles.update(dt, camera)
     this.marks.update(dt)
     this.lightning.update(dt)
     this.slash.update(dt)

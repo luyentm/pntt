@@ -1,17 +1,25 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
+  DoubleSide,
+  NormalBlending,
   Color,
   Group,
   InstancedMesh,
   Matrix4,
+  Material,
+  MeshBasicMaterial,
   MeshLambertMaterial,
   OctahedronGeometry,
+  PlaneGeometry,
   Quaternion,
   TetrahedronGeometry,
   Vector3,
   type BufferGeometry,
+  type PerspectiveCamera,
 } from 'three'
 import type { Rng } from '@/core/Rng'
+import { softTexture } from './softTexture'
 
 /**
  * Ba dáng hạt.
@@ -21,8 +29,18 @@ import type { Rng } from '@/core/Rng'
  *   xoay theo vận tốc làm nó đọc ra là tốc độ; một khối vuông bay nhanh vẫn chỉ
  *   là một khối vuông.
  * - `mote`: bát diện nhỏ — đốm linh khí lơ lửng.
+ * - `haze`: billboard mềm CỘNG SÁNG — quầng lửa, kim quang. Nó THÊM sáng.
+ * - `smoke`: billboard mềm ALPHA, màu tối — khói thật. Nó CHE thứ phía sau.
+ *
+ * Hai dáng billboard là hai dáng duy nhất phá quy tắc "hiệu ứng cũng lowpoly
+ * hết", và mỗi dáng có hạn mức riêng rất chặt vì lý do đó.
+ *
+ * Vì sao phải tách làm hai: cộng sáng KHÔNG THỂ làm ra khói. Nó chỉ cộng thêm
+ * sáng, còn khói thì phải che bớt — thử cộng sáng với màu khói trước và ra một
+ * quầng phát sáng, đọc ra là lửa chứ không phải khói. Ngược lại alpha tối không
+ * làm được quầng lửa. Một vụ nổ thật thì có cả hai: loé sáng rồi mới ra khói.
  */
-export type ParticleShape = 'shard' | 'spark' | 'mote'
+export type ParticleShape = 'shard' | 'spark' | 'mote' | 'haze' | 'smoke'
 
 export type EmitPattern =
   /** Toả đều mọi hướng. */
@@ -69,7 +87,29 @@ export interface EmitOptions {
   fade?: 'shrink' | 'pop'
 }
 
-const SHAPES: readonly ParticleShape[] = ['shard', 'spark', 'mote']
+const SHAPES: readonly ParticleShape[] = ['shard', 'spark', 'mote', 'haze', 'smoke']
+
+/**
+ * Hạn mức của hai dáng billboard, và chúng CỐ TÌNH nhỏ.
+ *
+ * Billboard trong suốt không ghi depth: N lớp chồng nhau là N lần fill, trong
+ * khi hạt khối đặc chỉ shade mỗi pixel một lần. Đo được trên máy này: cùng 768
+ * hạt cùng hình học, chỉ đổi từ khối đặc sang cộng sáng là đắt gấp 2,05 lần
+ * (3,31 → 6,77 ms/khung) ở mức phủ kín màn hình.
+ *
+ * Đây là "ngân sách phủ màn hình" chứ không phải con số tròn: ở cỡ lớn nhất
+ * (~1,3 unit) và khoảng cách camera thường (~15 unit) thì 32 + 24 hạt phủ
+ * khoảng 4–5% framebuffer mỗi lớp. Đủ cho một vụ nổ có loé sáng và khói, và
+ * không mở cửa cho 700 sprite.
+ */
+const BILLBOARD_CAPACITY: Partial<Record<ParticleShape, number>> = {
+  haze: 32,
+  smoke: 24,
+}
+
+function isBillboard(shape: ParticleShape): boolean {
+  return shape === 'haze' || shape === 'smoke'
+}
 
 function geometryFor(shape: ParticleShape): BufferGeometry {
   switch (shape) {
@@ -78,6 +118,9 @@ function geometryFor(shape: ParticleShape): BufferGeometry {
       return new BoxGeometry(0.16, 1, 0.16)
     case 'mote':
       return new OctahedronGeometry(0.6, 0)
+    case 'haze':
+    case 'smoke':
+      return new PlaneGeometry(1, 1)
     default:
       return new TetrahedronGeometry(1, 0)
   }
@@ -109,7 +152,7 @@ class ShapeBatch {
   /** Con trỏ vòng để tìm ô rảnh nhanh, không quét lại từ đầu mỗi lần. */
   cursor = 0
 
-  constructor(shape: ParticleShape, capacity: number, material: MeshLambertMaterial) {
+  constructor(shape: ParticleShape, capacity: number, material: Material) {
     this.capacity = capacity
     this.mesh = new InstancedMesh(geometryFor(shape), material, capacity)
     this.mesh.instanceMatrix.setUsage(35048) // DynamicDrawUsage
@@ -185,12 +228,55 @@ export class ParticleLayer {
   private readonly dir = new Vector3()
   private readonly color = new Color()
   private readonly colorB = new Color()
+  /** Hướng camera, dùng cho billboard khói. */
+  private readonly cameraQuat = new Quaternion()
+
+  private readonly solidMaterial: MeshLambertMaterial
+  private readonly hazeMaterial: MeshBasicMaterial
+  private readonly smokeMaterial: MeshBasicMaterial
 
   constructor(capacityPerShape = 256) {
     this.group.name = 'vfx:particles'
-    const material = new MeshLambertMaterial({ flatShading: true })
+    this.solidMaterial = new MeshLambertMaterial({ flatShading: true })
+
+    // `DoubleSide` là BẮT BUỘC cho cả hai billboard, không phải cho chắc.
+    //
+    // `PlaneGeometry` hướng mặt về +Z, còn camera nhìn theo -Z của chính nó. Copy
+    // quaternion của camera vào billboard làm mặt phẳng quay RA SAU, và
+    // `FrontSide` cull sạch — hạt tồn tại trong dữ liệu, mesh `visible`, đủ
+    // instance, mà trên màn hình không có gì. Mất một lúc mới tìm ra.
+    const billboard = { map: softTexture(), transparent: true, depthWrite: false, side: DoubleSide }
+
+    // Quầng lửa / kim quang: cộng sáng, `toneMapped: false` để bloom bắt được
+    this.hazeMaterial = new MeshBasicMaterial({
+      ...billboard,
+      blending: AdditiveBlending,
+      toneMapped: false,
+      opacity: 0.55,
+    })
+    // Khói: alpha thường để nó CHE thứ phía sau. Vẫn `toneMapped` bình thường,
+    // vì khói không phát sáng — nó phải chịu cùng tone mapping với cảnh.
+    this.smokeMaterial = new MeshBasicMaterial({
+      ...billboard,
+      blending: NormalBlending,
+      opacity: 0.42,
+    })
+
     for (const shape of SHAPES) {
-      const batch = new ShapeBatch(shape, capacityPerShape, material)
+      const material = shape === 'haze'
+        ? this.hazeMaterial
+        : shape === 'smoke'
+          ? this.smokeMaterial
+          : this.solidMaterial
+      const batch = new ShapeBatch(
+        shape,
+        BILLBOARD_CAPACITY[shape] ?? capacityPerShape,
+        material,
+      )
+      // Khói vẽ TRƯỚC quầng lửa: khói che, quầng cộng sáng — sai thứ tự thì
+      // quầng bị khói làm mờ thay vì rực lên trên nền khói
+      if (shape === 'smoke') batch.mesh.renderOrder = 6
+      if (shape === 'haze') batch.mesh.renderOrder = 7
       this.batches.set(shape, batch)
       this.group.add(batch.mesh)
       this.hideAll(batch)
@@ -320,7 +406,7 @@ export class ParticleLayer {
       // Mỗi hạt một sắc giữa hai màu — đám hạt có chiều sâu, không phẳng một tông
       this.color.set(options.color ?? 0xffffff).lerp(this.colorB, rng.float(0, 1))
       batch.mesh.setColorAt(i, this.color)
-      this.writeInstance(batch, i, shape === 'spark')
+      this.writeInstance(batch, i, shape === 'spark', isBillboard(shape))
     }
 
     batch.mesh.instanceMatrix.needsUpdate = true
@@ -335,7 +421,7 @@ export class ParticleLayer {
    * ở 60fps thì gần như không thấy, nhưng đó là một hạt bị mất và không có lý do
    * gì để chấp nhận nó.
    */
-  private writeInstance(batch: ShapeBatch, i: number, isSpark: boolean): void {
+  private writeInstance(batch: ShapeBatch, i: number, isSpark: boolean, billboard = false): void {
     const age = batch.age[i] as number
     const life = batch.life[i] as number
     const t = age / life
@@ -343,6 +429,21 @@ export class ParticleLayer {
     const size = (batch.size[i] as number) * curve
 
     this.position.set(batch.x[i] as number, batch.y[i] as number, batch.z[i] as number)
+
+    if (billboard) {
+      // Billboard PHÌNH RA rồi mờ, không thu nhỏ: khói thật loang ra khi nguội, còn
+      // thu nhỏ đọc ra là hút vào — ngược hẳn.
+      //
+      // Và nó mờ bằng cách phình lên trong khi độ mờ của material là hằng số:
+      // instance không có alpha riêng, nên "mờ dần" ở đây là kết quả của việc
+      // cùng một lượng sáng bị trải ra một diện tích lớn hơn.
+      const grow = (batch.size[i] as number) * (0.45 + t * 1.35) * (1 - t * t * 0.55)
+      this.quaternion.copy(this.cameraQuat)
+      this.scale.set(grow, grow, grow)
+      this.matrix.compose(this.position, this.quaternion, this.scale)
+      batch.mesh.setMatrixAt(i, this.matrix)
+      return
+    }
 
     if (isSpark) {
       // Xoay theo vận tốc và kéo dài theo tốc độ — đây là thứ làm tia lửa đọc ra
@@ -365,7 +466,12 @@ export class ParticleLayer {
     batch.mesh.setMatrixAt(i, this.matrix)
   }
 
-  update(dt: number): void {
+  /**
+   * @param camera cần cho `haze` và `smoke`: billboard phải quay theo camera. Bỏ
+   *   trống thì khói giữ hướng cũ — chỉ xảy ra trong test, nơi không có camera.
+   */
+  update(dt: number, camera?: PerspectiveCamera): void {
+    if (camera) this.cameraQuat.copy(camera.quaternion)
     for (const [shape, batch] of this.batches) {
       let dirty = false
       const isSpark = shape === 'spark'
@@ -401,7 +507,7 @@ export class ParticleLayer {
 
         // Tàn bằng cách THU NHỎ, không giảm alpha: instance không có alpha riêng,
         // và thu nhỏ đọc ra là "tan ra" đúng hơn là "mờ đi"
-        this.writeInstance(batch, i, isSpark)
+        this.writeInstance(batch, i, isSpark, isBillboard(shape))
         dirty = true
       }
 
@@ -418,8 +524,9 @@ export class ParticleLayer {
 
   dispose(): void {
     for (const batch of this.batches.values()) batch.mesh.geometry.dispose()
-    const first = this.batches.get('shard')
-    ;(first?.mesh.material as MeshLambertMaterial | undefined)?.dispose()
+    this.solidMaterial.dispose()
+    this.hazeMaterial.dispose()
+    this.smokeMaterial.dispose()
     this.group.removeFromParent()
   }
 }
