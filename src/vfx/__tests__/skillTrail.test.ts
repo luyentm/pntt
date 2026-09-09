@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SKILLS } from '@/game/data/skills'
+import { SKILLS, type SkillDef } from '@/game/data/skills'
 import { SKILL_TRAIL, skillTrail } from '../Vfx'
 
 /** Không phải chiêu trong bảng SKILLS — đòn quét của Mặc Đại Phu. */
@@ -53,11 +53,11 @@ describe('màu vệt theo chiêu', () => {
     //
     // Nguy cơ này KHÔNG hiển nhiên: các cặp đó cố tình cùng vai trò, nên phần
     // lớn cũng cùng ngũ hành, nên mặc định chúng rơi vào đúng một cặp màu.
-    const bySlot = new Map<number, typeof SKILLS>()
+    const bySlot = new Map<number, SkillDef[]>()
     for (const def of SKILLS) {
       const list = bySlot.get(def.slot) ?? []
       list.push(def)
-      bySlot.set(def.slot, list as never)
+      bySlot.set(def.slot, list)
     }
     for (const [slot, list] of bySlot) {
       if (list.length < 2) continue
