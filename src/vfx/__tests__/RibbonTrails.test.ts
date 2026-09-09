@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Mesh, PerspectiveCamera, type BufferAttribute } from 'three'
 import { NO_TRAIL, RibbonTrailLayer, TRAIL_CAPACITY, TRAIL_SEGMENTS } from '../RibbonTrails'
+import { SWORD_CAPACITY } from '@/world/SwordStorm'
 
 /** Camera đứng cao và lệch sang một bên, để tích có hướng không suy biến. */
 function makeCamera(): PerspectiveCamera {
@@ -408,6 +409,18 @@ describe('RibbonTrailLayer — hồ', () => {
       if (i === 7) continue
       expect(layer.isLive(live[i]!)).toBe(true)
     }
+  })
+
+  it('★ hồ đủ chỗ cho một lần PHÁT LẠI cả bộ kiếm trúc', () => {
+    // Phát lại đàn kiếm thả cả `SWORD_CAPACITY` chỗ ngồi rồi lập tức xin đúng
+    // bấy nhiêu chỗ mới, nên nhu cầu tức thời là GẤP ĐÔI số kiếm. Không đủ chỗ
+    // thì `pick()` cắt vệt của lượt trước đang tan — nó biến mất giữa chừng
+    // chứ không tan, và đó là kiểu hỏng chỉ thấy được khi bấm lại chiêu đúng
+    // lúc vệt cũ chưa kịp mờ hết.
+    //
+    // Khoá bằng test vì hai con số nằm ở hai file không liên quan gì nhau: nâng
+    // số kiếm trong `SwordStorm` mà quên hồ vệt thì không có gì báo.
+    expect(TRAIL_CAPACITY).toBeGreaterThanOrEqual(SWORD_CAPACITY * 2)
   })
 
   it('mọi vệt đều đang bám thì cắt cái cũ nhất', () => {

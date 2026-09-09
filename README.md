@@ -66,7 +66,7 @@ hình không phản hồi.
 | Chuột trái (hoặc `J`) | Chém — bấm liên tiếp để nối combo 3 nhát. Giữ để chém liên tục |
 | — | **Tự ngắm bật mặc định**: đòn đánh và pháp thuật tự nhắm con quái có vòng vàng dưới chân. Tắt trong *Cài đặt* để ngắm bằng chuột |
 | Giữ Shift | Đi chậm |
-| `1`–`9`, `0` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù · 竹 Thanh Trúc Phong Vân Kiếm · 嫁 Giá Y Thần Công · 蟲 Thực Kim Trùng · 衍 Đại Diễn Quyết |
+| `1`–`9`, `0` | Pháp thuật. Mười ô, mà bảng có **17 chiêu** — chiêu cảnh giới cao chiếm chỗ chiêu cũ trên đúng phím đó, và luôn là hai thứ cùng vai trò (phím 3 mãi là "đốt": 火 Hoả Cầu → 扇 Tam Diễm Phiến). Xem `game/Loadout.ts` |
 | — | `0` là ô THỨ MƯỜI, không phải ô số không: nó nằm ngay sau `9` nên hàng số đọc ra là 1…0 |
 | Giữ `F` | Toạ thiền — tăng Tu Vi chậm và đều. Tự thoát khi di chuyển hoặc bị đánh |
 | `G` | Uống hết Tiểu Bình linh nhũ để lấy Tu Vi |
@@ -77,6 +77,13 @@ hình không phản hồi.
 | `Esc` | Đóng bảng đang mở; không có bảng nào thì mở menu tạm dừng |
 
 Trong màn thử dẫn khí: bấm `Space` mỗi khi con trỏ đi vào vùng sáng.
+
+Hai màn xem, chọn từ menu chính:
+
+| Màn | Phím |
+|---|---|
+| **Luyện Kiếm Đài** — trình diễn 17 pháp thuật qua bốn cảnh giới | `P` tự chạy / tự chơi · `Q` `E` lật bước · `1…0` tự thi triển · `Esc` về menu |
+| **Đồ Giám** — tra nhân vật, yêu thú, pháp bảo; mô hình 3D xoay | bấm một thẻ để mở · `Esc` lùi về lưới, rồi về menu |
 
 ## Kiến trúc
 
@@ -106,7 +113,8 @@ Chi tiết đầy đủ nằm trong plan. Tóm tắt:
   buffer cấp phát sẵn → không sinh rác mỗi frame. Clip lưu ĐỘ LỆCH so với thế nghỉ,
   nên sửa tỉ lệ nhân vật trong `CHIBI_REST` không làm hỏng animation.
 - **Màn chơi qua interface `GameScene`** (`world/Scene.ts`) — điểm cắm để thêm các
-  chương cốt truyện về sau mà không phải sửa lõi.
+  chương cốt truyện về sau mà không phải sửa lõi. Bản này có **ba màn**:
+  `ArenaScene` (lượt chơi), `SwordTerraceScene` (Luyện Kiếm Đài), `CodexScene` (Đồ Giám).
 
 ### Prop lặp lại dùng `InstancedMesh`
 
@@ -370,29 +378,38 @@ vẽ **hai lượt** — pass nét viền khai báo `EffectAttribute.DEPTH` nên
 một lượt render depth riêng cho cả cảnh, và mọi hình khối trong game đều bị vẽ hai lượt như
 vậy. Chi phí không đổi theo số vệt đang sống vì hình học được cấp sẵn toàn bộ.
 
-**33 kiếm trúc.** Hạn mức hồ nâng từ 28 lên 64: riêng Thanh Trúc Phong Vân Kiếm đã cần 33 ô,
-mà nó phát được giữa lúc đang chạy, đang có đàn phi hành khí bay và đang chém. Ở 28 thì đàn
-kiếm chiếm hết hồ và `pick()` bắt đầu cắt vệt của những thứ khác — mà cắt vệt *đang bám* thì
-nó mất đột ngột giữa đường chứ không tan. `pick()` luôn ưu tiên cắt vệt ĐANG TAN trước, nên
-thứ tự hy sinh là đúng; nâng hạn mức chỉ để nó gần như không bao giờ phải hy sinh gì.
+**Đàn kiếm trúc, và hai lần phải nâng hạn mức hồ vệt.** Riêng Thanh Trúc Phong Vân Kiếm đã
+chiếm một ô cho mỗi thanh, mà nó phát được giữa lúc đang chạy, đang có đàn phi hành khí bay
+và đang chém. Hồ chật thì `pick()` bắt đầu cắt vệt của những thứ khác — mà cắt vệt *đang bám*
+thì nó mất đột ngột giữa đường chứ không tan.
 
-Nới rộng gần như miễn phí vì hình học cấp sẵn toàn bộ và ô không dùng có diện tích 0. Đo được:
-33 vệt cùng lúc là **+2 draw call và +4352 tam giác** trên tổng ~111 nghìn (3,9%), và con số
-đó KHÔNG đổi theo số vệt đang sống.
+- **28 → 64 → 128** khi đàn kiếm còn 33 thanh: lúc nặng nhất đếm được 96 vệt cùng sống.
+- **128 → 192** khi đàn kiếm lên đủ 72 thanh. Đo ở Luyện Kiếm Đài đúng lúc **phát lại** chiêu:
+  **128/128 ô đang sống, trong đó 56 ô là vệt của lượt trước đang tan.** Phát lại thả cả 72
+  chỗ ngồi rồi lập tức xin 72 chỗ mới, nên nhu cầu tức thời chạm **144** — vượt hạn mức.
+  `pick()` luôn hy sinh vệt ĐANG TAN trước nên thứ tự đúng, nhưng cắt một vệt đang tan vẫn
+  đọc ra là nó *biến mất* chứ không phải nó tan.
+
+Có test khoá bất biến `TRAIL_CAPACITY >= SWORD_CAPACITY × 2`: hai con số nằm ở hai file không
+liên quan gì nhau, nên nâng số kiếm mà quên hồ vệt thì không có gì báo.
+
+Nới rộng gần như miễn phí vì hình học cấp sẵn toàn bộ và ô không dùng có diện tích 0. Đo được
+ở khung Luyện Kiếm Đài lúc 72 kiếm đang quét: **41.804 tam giác / 234 draw call**, trong đó
+192 ô vệt góp 6912 đỉnh và 6528 tam giác — và con số đó KHÔNG đổi theo số vệt đang sống.
 
 `SwordStorm` không biết VFX tồn tại — nó nhả vị trí qua hai hook `onSwordTrail(seat, x, y, z)`
 (gọi trong `render`, không phải `fixedUpdate`: vệt là hình ảnh, nhả theo nhịp 60Hz thì ở máy
 chạy trên 60fps đầu vệt giật lùi so với thanh kiếm đã nội suy) và `onSwordsEnd()`. Danh tính
 là `seat` — chỗ trong đội hình, cố định suốt lượt chiêu — nên không phải cấp số thứ tự như
 phi hành khí. `onSwordsEnd` phải gọi cả khi **phát lại** chiêu, không chỉ khi nó tan: phát lại
-lúc đang chạy thì đàn kiếm nhảy về bán kính tụ, và vệt đang bám sẽ vẽ 33 nan hoa từ vành vòng
+lúc đang chạy thì đàn kiếm nhảy về bán kính tụ, và vệt đang bám sẽ vẽ một bó nan hoa từ vành vòng
 cũ về sát người.
 
 Lấy vị trí **mũi kiếm** (`r + BLADE_REACH × 0.5`), không phải tâm thân kiếm: lưỡi với ra ngoài
 vòng bay, nên vệt xuất phát từ tâm sẽ nằm lệch vào trong so với chỗ mắt đang thấy lưỡi quét qua.
 
 Lần đầu tôi đặt `step` 0.13 cho vệt ngắn và được **ba vòng tròn liền** — một pháp trận đứng
-yên, không phải 33 vật thể đang bay. Kiếm quay 0,23–0,34 unit mỗi khung, nhanh hơn bước, nên
+yên, không phải một đàn vật thể đang bay. Kiếm quay 0,23–0,34 unit mỗi khung, nhanh hơn bước, nên
 vệt vẫn dài 16 × 0,28 ≈ 4,5 unit trong khi khoảng cách giữa hai thanh chỉ 3,4 unit. Sửa bằng
 `points: 7` → vệt ~1,7 unit ≈ 16° ở bán kính 6, phủ chừng nửa khoảng giữa hai thanh: ra vòng
 xoáy **đứt nét**, thấy rõ từng thanh kiếm mà vẫn có cảm giác cả đàn đang cuốn.
@@ -445,7 +462,7 @@ nói sai về chiêu đang tới. Vệt quạt của cú lướt thì lấy lam 
 quạt chỉ có MỘT màu: đầu cặp gần như trắng (tan vào nền trời) và đuôi cặp thì thẫm (tan vào
 bóng cỏ), chỉ dải ribbon có chuyển màu mới dùng được cả hai đầu.
 
-**Chi phí, đo được ở khoảnh khắc nặng nhất** (33 kiếm trúc + vệt chạy + hai vụ nổ + một
+**Chi phí, đo được ở khoảnh khắc nặng nhất** (đàn kiếm trúc + vệt chạy + hai vụ nổ + một
 pháp vực, 96 vệt cùng sống): **+10 draw call và +6672 tam giác** trên tổng 96 nghìn, cho cả
 dải ribbon và hào quang chân. Trong 10 draw call đó chỉ 1 là của lớp dải (nó gộp mọi vệt
 vào một mesh), 4 là bốn vòng hào quang đang sống, và tất cả nhân hai vì pass nét viền cần
@@ -511,7 +528,10 @@ Ba chỗ đặt tay vào hệ thống, mỗi chỗ chọn có lý do:
 - **Đại Diễn Quyết nhân ở `SkillCaster`**, chỗ pháp thuật được DỰNG RA (độ mạnh khiên, sát
   thương và thời gian đàn kiếm) — không nhân vào sát thương mỗi đòn, vì làm thế là nó trùng
   vai với Giá Y Thần Công và hai chiêu mất hết khác biệt. Không tăng bán kính vòng kiếm:
-  vòng rộng ra thì 33 thanh rải mỏng và người chơi mất khả năng lái nó bằng cách đi bộ.
+  vòng rộng ra thì đàn kiếm rải mỏng và người chơi mất khả năng lái nó bằng cách đi bộ.
+  Cũng không tăng SỐ KIẾM: cái quyết định ngự nổi bao nhiêu thanh là thần thức nền, còn Đại
+  Diễn Quyết chỉ là một cú bùng tạm — cho nó thêm kiếm thì vòng kiếm dày lên rồi mỏng lại
+  giữa trận, và người chơi mất mốc để đọc cảnh giới của mình.
 - **Độ mạnh của chiêu hỗ trợ có HAI đường ra.** Khiên là một LƯỢNG nên suy từ Thần Thức và
   tự lên theo cảnh giới; Giá Y và Đại Diễn là một TỈ LỆ nên phải là số cố định — suy tỉ lệ
   từ Thần Thức thì tới Kết Đan nó thành cộng vài nghìn phần trăm. Ngược lại, sát thương theo
@@ -524,53 +544,259 @@ Ba thứ nhỏ phải sửa kèm, đều là dạng lỗi im lặng nếu bỏ q
   chiêu cuối có ô trên thanh mà không có phím nào gọi được.
 - Chữ bay lên của chiêu hỗ trợ hiện `⛨ 1870` cho khiên nhưng `+60%` cho hai chiêu tỉ lệ —
   cùng một trường `magnitude` mà đọc ra hai nghĩa khác nhau, và "⛨ 0.6" thì không nói gì cả.
-- Chế độ trình diễn phải **bù sinh lực mỗi bước**, không chỉ linh lực: showreel diễn Giá Y
+- Màn trình diễn phải **bù sinh lực mỗi bước**, không chỉ linh lực: showreel diễn Giá Y
   Thần Công mỗi vòng, mỗi lần đốt 18% máu, nên sau vài vòng thanh máu cạn tới đáy và người
   xem đọc ra là nhân vật đang chết dở.
 
-### Chế độ trình diễn thần thông
+### Bộ pháp thuật theo nguyên tác — 17 chiêu, bốn cảnh giới
 
-Chọn từ menu chính (*Xem thần thông*). Mở hết cảnh giới Kết Đan nên cả 7 pháp thuật,
-ngự kiếm phi hành và 33 kiếm trúc đều dùng được ngay.
+Bảng chiêu cũ có 10 mục và dừng ở Kết Đan. Nay là **17 chiêu chia bốn đại cảnh giới**, và
+thang cảnh giới có thêm **Nguyên Anh kỳ** — không phải để chơi tới đó, mà vì sáu pháp bảo
+trứ danh nhất của Hàn Lập chỉ dùng được sau khi kết anh, nên gắn chúng vào Kết Đan là nói
+sai nguyên tác ngay ở chỗ dễ kiểm nhất.
 
-- **Showreel tự chạy** đi qua 14 mục — combo cận chiến, 10 pháp thuật, phi hành, toạ
-  thiền, đột phá — kèm tên và chú thích cho từng thứ. `P` đổi giữa tự chạy và tự chơi,
-  `Q`/`E` lật mục, hoặc bấm thẳng vào danh sách bên trái.
-- Danh sách hiện **hết** kịch bản chứ không chỉ mục đang diễn: người vào đây để xem Hàn
-  Lập có những gì, nên phải thấy toàn bộ ngay và nhảy tới cái mình muốn, không phải ngồi
-  đợi showreel đi tới.
-- **Chờ 0,9 giây sau khi hiện chú thích rồi mới diễn.** Chữ và chiêu nổ cùng lúc thì mắt
-  bị chia hai chỗ và không đọc được cái nào.
-- **Bia đỡ là `passive`** — không tìm mục tiêu, không ra đòn, nhưng vẫn là phe địch nên
-  mọi chiêu vẫn ăn vào đủ cả đẩy lùi, đóng băng và thiêu đốt. Để chúng đánh trả thì mỗi
-  mục trình diễn bị một con quái xông vào cắn ngang. Máu ×40 để chúng không chết giữa
-  lúc đang diễn.
-- **KHÔNG chạm vào tiến độ.** Nó ghi đè cảnh giới trong bộ nhớ nhưng không bao giờ ghi
-  ra `localStorage`, và "Lưu và về menu" trong lúc trình diễn cũng không ghi — ghi cảnh
-  giới Kết Đan của chế độ xem vào bản lưu sẽ xoá sạch tiến độ thật. Đã kiểm cả vòng:
-  lưu → vào trình diễn → về menu → Tiếp tục, ra đúng tiến độ cũ.
-- `freeCast` bỏ giá linh lực và `noCooldown` **bỏ hẳn hồi chiêu**. Chế độ này để XEM
-  chiêu, nên chờ hồi 22 giây của Thanh Trúc Phong Vân Kiếm là chờ vô nghĩa — cùng lý do
-  mà linh lực ở đây luôn đầy. Ban đầu tôi giữ hồi chiêu vì sợ chiêu chồng lên nhau, và
-  cho bộ trình diễn tự xoá hồi chiêu của đúng ô nó cần; nhưng thứ chặn chiêu chồng nhau
-  là cổng `phase !== 'none'` (còn dẫn khí hoặc thu thế thì không nhận chiêu mới), còn nhịp
-  của showreel thì do `repeatEvery` trong bảng trình diễn quyết định — chưa bao giờ do hồi
-  chiêu. Giữ nó chỉ phạt đúng một người: người tự bấm 1…7 để xem lại một chiêu.
-- Bộ điều phối phải **tắt trạng thái kéo dài khi rời mục**: bay và toạ thiền là bật/tắt
-  chứ không phải một cú nổ, không tắt thì nhân vật vẫn lơ lửng trong lúc showreel đã
-  sang mục khác.
+| Cảnh giới | Chiêu |
+|---|---|
+| **Luyện Khí** | 劍 Ngự Kiếm Thuật · 風 Phong Độn Thuật · 火 Hoả Cầu Thuật · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù · 嫁 Giá Y Thần Công |
+| **Trúc Cơ** | 蟲 Thực Kim Trùng · 陣 Ngũ Hành Trận Kỳ |
+| **Kết Đan** | 竹 Thanh Trúc Phong Vân Kiếm · 衍 Đại Diễn Quyết |
+| **Nguyên Anh** | 庚 Canh Kim Kiếm Khí · 扇 Tam Diễm Phiến · 水 Thiên Nhất Chân Thuỷ · 磁 Nguyên Từ Thần Quang · 山 Thái Ất Thanh Sơn Quyết · 翅 Phong Lôi Sí |
 
-Ba chỗ phải sửa khi nối vào:
+`PLAYABLE_MAJOR_CAP` tách **trần của lượt chơi** khỏi **trần của thang**. Không tách thì
+Kết Đan đại thành đột phá thẳng lên Nguyên Anh mà KHÔNG tốn đan dược nào — `BREAKTHROUGH_PILL`
+không có mục cho cảnh giới mới nên `requiredPill()` trả về rỗng và cửa mở toang. Một đại cảnh
+giới được tặng không, không có gì báo.
 
-- Dùng `P`/`Q`/`E`, **không** dùng `Space` và mũi tên — `Space` đã là phím ngự kiếm phi
-  hành và mũi tên đã là phím di chuyển. Chồng lên nhau thì một lần bấm `Space` vừa lật
-  showreel vừa cất nhân vật lên trời.
-- `Esc` phải bắt **trong** hàm đọc phím của chế độ trình diễn: đường `Esc` thường nằm
-  trong `updateCultivationInput`, mà hàm đó không chạy ở chế độ này.
-- `WaveBanner.update()` tự chọn thẻ theo trạng thái bộ điều phối, và trạng thái đó là
-  `idle` sau khi reset — nên nó **dựng lại** thẻ "bấm ENTER để khởi trận" ngay khung sau
-  khi vào chế độ trình diễn, đè lên đúng cái thẻ đang giới thiệu chiêu. Gọi `hide()` một
-  lần lúc vào là không đủ; phải chặn cả lời gọi `update` mỗi khung.
+#### ★ 33 kiếm trúc là SAI — nguyên tác là 72, và số kiếm đổi theo cảnh giới
+
+Con số 33 nằm cứng trong `SwordStorm.ts` (và trong một chuỗi ở menu chính) từ đầu, kèm cả
+một comment khẳng định "đúng như trong truyện". Tra lại thì:
+
+- Bộ đủ là **72 thanh** — sáu bộ 12, luyện từ sáu gốc **Kim Lôi Trúc** vạn niên, xong sau
+  khi Hàn Lập Kết Đan hai mươi mốt năm.
+- Kết Đan **sơ kỳ chỉ ngự nổi sáu bảy thanh**, **hậu kỳ hai bốn thanh**; phải tới **Nguyên
+  Anh** mới điều được cả bộ. Về sau luyện thêm lên 108.
+- Thuộc tính **Mộc + Lôi**, và nó được ghi trong chính **Thanh Nguyên Kiếm Quyết** — cùng
+  một lộ với combo cận chiến người chơi dùng từ phút đầu.
+- **Thiên Lôi Trúc là NGUYÊN LIỆU, không phải chiêu thức.** Nó về Đồ Giám dạng linh vật.
+
+Nên số kiếm giờ **suy từ cảnh giới** (`soKiemTruc`), không phải hằng số: 12 → 18 → 24 → 36
+qua bốn tầng Kết Đan, rồi 72 ở Nguyên Anh. Hai mốc 24 và 72 là con số nguyên tác nói thẳng;
+ba mốc còn lại lấp theo bội của 12 (một bộ cơ sở) chứ không theo "sáu bảy thanh", vì một
+vòng sáu thanh chia cho ba vòng đồng tâm thì mỗi vòng còn hai cái, không ra nổi hình đội ngũ.
+
+Ba điều rút ra khi làm chỗ này:
+
+- **`SWORD_CAPACITY` là sức chứa của InstancedMesh, không phải số kiếm bay ra.** Cấp phát
+  theo mức trần một lần rồi chỉ đổi `mesh.count` — đổi số kiếm không tốn thêm draw call nào.
+  Vượt trần thì `setMatrixAt` ghi ra ngoài buffer, mà three **không ném lỗi**, nó chỉ âm thầm
+  bỏ qua. Có test khoá.
+- **Số kiếm KHÔNG được nhân vào sát thương.** Nó đổi mật độ hình ảnh và bề rộng đội hình;
+  sức mạnh đã nằm ở `mult` và ở cảnh giới rồi. Nhân vào thì Nguyên Anh ăn gấp sáu Kết Đan
+  chỉ vì đội hình dày hơn, tức luật chênh lệch cảnh giới bị đếm hai lần. Có test khoá.
+- **Làm tròn XUỐNG bội của ba.** Đội hình là ba vòng đồng tâm; một con số lẻ để lại một vòng
+  thiếu chỗ, và chỗ thiếu đó quay vòng vòng quanh người thành một khoảng hở chạy liên tục —
+  mắt đọc ra là lỗi chứ không phải đội hình.
+
+Và đây là chi tiết đáng giá nhất: cùng một chiêu, cùng một phím, vòng kiếm dày lên gấp sáu
+khi đột phá. Việc lên cảnh giới trở thành thứ **nhìn thấy được** thay vì một con số stat.
+
+#### Khoá theo `id`, không theo chỉ số mảng
+
+`SkillCaster` trước đây khoá hồi chiêu, ô đang thi triển và cổng cảnh giới theo **chỉ số
+trong mảng `SKILLS`**. Cái giá là một dòng cảnh báo ngay trong bảng chiêu: *"thêm vào CUỐI
+mảng, không chèn giữa"* — chèn giữa là đổi hết phím bấm của mọi chiêu phía sau, và không có
+gì báo lỗi. Với 17 chiêu chia bốn cảnh giới thì luật đó không giữ nổi: một chiêu Trúc Cơ mới
+phải nằm cạnh các chiêu Trúc Cơ khác thì bảng mới đọc được.
+
+Nay mọi thứ khoá theo `id` (`Map<string, number>` cho hồi chiêu, `activeId` thay `activeSlot`),
+và chèn ở đâu trong mảng cũng được.
+
+#### `Loadout` — 17 chiêu, 10 ô, và phím bấm không bao giờ trượt
+
+Thanh pháp thuật chỉ có mười ô. Cách chọn KHÔNG phải "lấy mười chiêu mới nhất": làm vậy thì
+mỗi lần đột phá là mọi phím trượt đi một ô, và người chơi đã quen tay bỗng bấm sai hết.
+
+Thay vào đó mỗi chiêu tự khai một **ô cố định** (`SkillDef.slot`), nhiều chiêu được phép
+dùng chung một ô, và chiêu cảnh giới cao **chiếm chỗ** chiêu cũ trên đúng phím đó. Cặp chiếm
+chỗ luôn là hai thứ **cùng vai trò**:
+
+```
+phím 1  Ngự Kiếm Thuật   → Canh Kim Kiếm Khí     (đòn bắn thẳng)
+phím 2  Phong Độn Thuật  → Phong Lôi Sí          (thân pháp)
+phím 3  Hoả Cầu Thuật    → Tam Diễm Phiến        (hệ Hoả)
+phím 5  Thiên Lôi Phù    → Thái Ất Thanh Sơn     (đòn nặng đặt tại con trỏ)
+phím 6  Băng Phong Phù   → Thiên Nhất Chân Thuỷ  (đóng băng)
+phím 7  Giá Y Thần Công  → Đại Diễn Quyết        (tự bùng sức mạnh)
+phím 9  Ngũ Hành Trận Kỳ → Nguyên Từ Thần Quang  (khống chế cả vùng)
+```
+
+Nên phím 3 mãi mãi là "đốt" và phím 2 mãi mãi là "né", qua cả bốn cảnh giới. Test khoá đúng
+bất biến đó: với mọi ô, chiêu Nguyên Anh phải cùng `role` với chiêu Luyện Khí nó thay thế.
+
+Điều kiện để `loadoutFor` xác định: **không có hai chiêu cùng ô VÀ cùng cảnh giới**. Bằng
+nhau thì kết quả phụ thuộc thứ tự mảng — tức đảo hai dòng trong bảng là đổi phím bấm của
+người chơi, im lặng. Có test riêng cho việc này.
+
+#### Số liệu sát thương SUY từ `action`, không gõ tay
+
+`SkillDef` cố tình **không có** trường "sát thương". `skillDamage(def)` đọc thẳng từ `action`
+và trả về hệ số mỗi đòn, số đòn, phần quy đổi từ DoT, tổng, và một bậc đọc nhanh (`nhẹ` →
+`vừa` → `nặng` → `cực nặng` → `huỷ diệt`). Thẻ ở Luyện Kiếm Đài và trang Đồ Giám đều đọc từ
+đây, nên chỉnh một hệ số `mult` là mọi chỗ hiển thị đổi theo. Một bảng gõ tay thì sớm muộn
+cũng nói sai, và nó nói sai **im lặng**.
+
+Đơn vị là **hệ số công**, không phải sát thương tuyệt đối: sát thương thật còn qua phòng ngự,
+ngũ hành và chênh lệch cảnh giới, nên một con số tuyệt đối chỉ đúng với đúng một cặp đánh nhau.
+
+Hai chỗ phải cẩn thận trong công thức:
+
+- **Đàn kiếm trừ đoạn tụ kiếm.** Gần một giây đầu đàn kiếm quay sát người và không chém ai;
+  tính cả đoạn đó thì con số trên thẻ cao hơn thứ mục tiêu thật sự phải chịu.
+- **`pierce` là số MỤC TIÊU, không phải số đòn.** Ngự Kiếm Thuật xuyên 4 nhưng một mục tiêu
+  chỉ ăn một lần, nên `soDon` là 1 còn `soMucTieu` là 4. Gộp hai trục đó vào một con số thì
+  chiêu nhập môn được xếp cùng bậc với Thái Ất Thanh Sơn Quyết.
+
+#### Ba thứ thêm vào hệ chiêu
+
+- **`volley`** — bắn một loạt thay vì một viên. Canh Kim Kiếm Khí bắn bảy đạo trong một quạt
+  HẸP (0,3 radian) chứ không xoè rộng: đây là chiêu dồn vào MỘT mục tiêu, xoè rộng thì mỗi
+  đạo trúng một con khác nhau và chiêu mạnh nhất của Nguyên Anh lại gãi ngứa bảy chỗ.
+- **`pulses`** — pháp vực bùng nhiều nhịp. Tam Diễm Phiến quạt ba lần, Thiên Nhất Chân Thuỷ
+  dội hai đợt. Gộp thành một vụ nổ to thì tên chiêu nói một đằng còn hình nói một nẻo. Nhịp
+  còn nợ chạy **độc lập với pha thi triển**: ba nhịp của Tam Diễm Phiến kéo 1,3 giây còn thu
+  thế chỉ 0,45 giây — buộc chúng vào pha thì hai nhịp cuối biến mất đúng lúc người chơi đã đi
+  tiếp. Và mỗi nhịp phải **truy vấn lại vòng tròn**, nếu dùng lại danh sách mục tiêu của nhịp
+  đầu thì con quái đã chạy khỏi biển lửa vẫn cháy còn con vừa chạy vào thì không việc gì.
+- **Lực hút** — `knockback` âm. Đi kèm một sửa lỗi có sẵn từ trước: pháp vực trước đây nhờ
+  `strike` đẩy, mà `strike` đẩy ra xa **người thi triển**. Với pháp vực đặt tại con trỏ thì
+  gốc đúng phải là **tâm vùng** — sai gốc thì một quả sấm rơi phía sau lưng địch lại hất nó
+  về phía mình. Sửa xong thì số âm tự nhiên thành lực hút, và Nguyên Từ Thần Quang không cần
+  một loại `action` riêng.
+
+### Luyện Kiếm Đài — màn trình diễn thần thông
+
+Chọn từ menu chính. Là một **`GameScene` riêng** (`world/SwordTerraceScene.ts`), không phải
+một cờ `demoMode` chạy xuyên qua đấu trường như trước.
+
+Đó là thay đổi đáng ghi lại nhất ở đây. Chế độ cũ sống nhờ một biến bool, và **mỗi** nhánh
+gameplay của đấu trường — đợt sóng, quái nền, nhặt đồ, tự lưu, hồi sinh, thanh banner — đều
+phải mọc thêm một câu hỏi "có đang trình diễn không". Bảy chỗ có thể quên, mà quên chỗ nào
+thì hỏng chỗ đó theo kiểu im lặng: một con quái nền lang thang vào giữa lúc đang diễn, hoặc
+cảnh giới của chế độ xem bị ghi đè lên bản lưu thật. Tách ra thì màn này **không có** những
+hệ đó để mà quên — nó không cầm `storage`, không có `save()`, và `Player` của nó là một thực
+thể khác hẳn. `ArenaScene` gọn đi gần 200 dòng.
+
+- **Không một sinh vật nào trong màn.** Bia là **mộc nhân** (người gỗ) và **bia đá**, dựng
+  bằng geometry trong `art/props/training.ts`. Vẫn là `Combatant` phe địch nên mọi chiêu ăn
+  vào đủ cả đẩy lùi, đóng băng, thiêu đốt và số sát thương bay lên — tức người xem vẫn đọc
+  được toàn bộ phản hồi của một chiêu — nhưng không con nào có `Agent`, không con nào tự đi
+  lại hay đánh trả.
+- **Mộc nhân giữ dáng NGƯỜI nhưng không có mặt.** Hình người cho biết chiêu đang đánh vào
+  đâu; một khối trụ thì đòn chém ngang bụng và đòn giộng vào đầu trông y hệt nhau. Nhưng
+  thêm mắt vào là nó thành một sinh vật, và cả lý do bỏ quái khỏi màn này biến mất.
+- **Thân tách khỏi gốc thành hai `Group`.** Đòn đánh làm thân nghiêng và rung, chân đế vẫn
+  cắm xuống đá. Xoay chung một node thì cả cái đế nhấc lên khỏi sàn và mắt đọc ra là một món
+  đồ chơi bị đá đổ. Biên độ rung có **trần**: một chiêu nhiều nhịp gọi `showHurt` bốn lần
+  trong một giây, không có trần thì bia quay tít như chong chóng.
+- **Phòng ngự và bạo kích của bia bằng 0.** Đây là màn để ĐỌC sức của từng chiêu; phòng ngự
+  bóp méo con số theo một đường phi tuyến và bạo kích làm nó nhảy ngẫu nhiên. Bỏ cả hai thì
+  số bay lên tỉ lệ thẳng với hệ số công ghi trên thẻ — hai chỗ nói cùng một điều.
+- **Máu bia suy theo cảnh giới NGƯỜI THI TRIỂN.** Ở Nguyên Anh, công của Hàn Lập gấp gần ba
+  mươi lần lúc Luyện Khí; một con số cứng thì hoặc bia bất tử ở đầu showreel hoặc bốc hơi
+  trước nhịp quét thứ hai ở cuối.
+- **Mỗi bước tự khai cảnh giới, và bộ điều phối đặt cảnh giới TRƯỚC khi dựng bia.** Máu bia
+  suy từ cảnh giới người chơi, nên dựng trước rồi mới nâng cảnh giới thì cả vòng bia mỏng đi
+  một bậc và chết ngay nhịp quét đầu. Có test khoá đúng thứ tự hai lời gọi đó.
+- **Đàn kiếm trúc xuất hiện HAI LẦN trong kịch bản** — 12 thanh ở Kết Đan sơ kỳ, 72 thanh ở
+  Nguyên Anh. Đây là chỗ duy nhất đáng lặp lại một chiêu: xem 12 rồi xem 72 mới đọc ra được
+  cảnh giới nghĩa là gì.
+- **Bộ điều phối gọi chiêu theo `id`, không theo ô.** Đó là điều làm màn này diễn được cả
+  mười bảy chiêu: thanh pháp thuật chỉ có mười ô nên bảy chiêu bị chiếm chỗ, và nếu showreel
+  cũng đi qua ô thì bảy chiêu đó không có đường nào gọi ra.
+- **Kẹp người chơi trong lòng đài bằng một phép chia**, không dựng vành va chạm. Vành tròn
+  ghép từ hình tròn tĩnh thì luôn có kẽ hở giữa hai hình, mà một cú Phong Lôi Sí dài 10,5
+  unit tìm ra kẽ hở đó ngay lần lướt đầu tiên.
+- **Đài dùng `FLAT_GROUND`, không dùng `Terrain`.** Địa hình gợn sóng làm bia đứng lệch cao
+  độ nhau vài phần mười unit, và ở một màn để ĐO thì mọi chênh lệch không giải thích được
+  đều là nhiễu. Đài cũng có bốn vòng khắc và tám nan hoa — không phải trang trí: sân trống
+  hoàn toàn thì mắt không có mốc nào để đo khoảng cách, nên người xem không đọc ra bán kính
+  3 của đàn kiếm khác bán kính 5,2 của Thái Ất Thanh Sơn ở chỗ nào.
+- **Thả vệt đuôi theo HẾT sức chứa đàn kiếm**, không theo số kiếm của lượt vừa rồi: lượt
+  trước có thể đông hơn lượt này, và vệt của những chỗ ngồi thừa sẽ treo lại giữa không khí
+  cho tới lần nào đó tình cờ đông bằng.
+- `P` tự chạy / tự chơi · `Q` `E` lật bước · `1…0` tự thi triển · `Esc` về menu. Dùng
+  `P`/`Q`/`E` chứ **không** `Space` và mũi tên — `Space` đã là ngự kiếm phi hành.
+
+#### Thẻ giới thiệu nói ba thứ, theo đúng thứ tự người xem cần
+
+Tên chiêu → **thi triển bằng gì** (pháp bảo và hạng của nó) → **mạnh cỡ nào** (bậc sát thương
+kèm con số suy ra nó) → rồi mới tới chú thích về cách xem. Thiếu hai cái giữa thì mọi chiêu
+đọc ra như nhau — mà trong Phàm Nhân, khoảng cách giữa một lá phù mua ngoài chợ và một bản
+mệnh pháp bảo luyện hai mươi mốt năm mới là nội dung thật.
+
+Danh sách bên trái **chia chương theo cảnh giới** chứ không phải một cột 22 dòng phẳng: cột
+phẳng thì người xem không đọc ra được rằng bộ pháp thuật này đi theo một CON ĐƯỜNG.
+
+### Đồ Giám
+
+Bảng tra nhân vật · yêu thú · pháp bảo. Lưới thẻ, bấm một thẻ thì mô hình dựng lên **bệ xoay**
+ở giữa và trang chi tiết mở ra bên phải.
+
+Là một `GameScene` (`world/CodexScene.ts`) chứ không phải một lớp phủ DOM, và lý do là chính
+cái bệ xoay: mô hình ở đây dựng bằng **đúng những hàm geometry mà trận đấu dùng**, nên con
+Hắc Lang trong Đồ Giám là con Hắc Lang thật chứ không phải một tấm ảnh chụp sẽ lệch đi sau
+lần đổi màu lông đầu tiên.
+
+- **Không một chỉ số nào gõ tay.** Mục có `unitId` thì máu, công, phòng, cảnh giới đọc thẳng
+  từ `units.ts`; mục pháp bảo đọc từ `skills.ts`. Đồ Giám là chỗ người chơi TIN nhất, nên nó
+  nói sai là tệ nhất. Có test cấm một mục vừa khai `unitId` vừa tự khai `realm` — hai nguồn
+  cho cùng một con số là hai chỗ để nói khác nhau, và giá trị bị `codexRealm` bỏ qua sẽ nằm
+  trong file trông như sự thật mà không bao giờ được đọc.
+- **In chỉ số ở CẢNH GIỚI của nó, không in chỉ số nền.** Chỉ số nền của Mặc Đại Phu là 150
+  sinh lực; con thật ở Trúc Cơ hậu kỳ có gần ba nghìn. In số nền thì bảng nói một điều đúng
+  về dữ liệu và sai hoàn toàn về thứ người chơi sẽ gặp.
+- **Không lấy `def.scale` làm tỉ lệ trưng bày.** Đó là tỉ lệ so với nhân vật cao 1,1 unit
+  trong trận, nên con Yêu Thử ra 0,52 và trên cái bệ nó chỉ còn là một chấm. Mọi mô hình
+  dựng ở tỉ lệ 1 rồi `displayScale` của từng mục chỉnh cho vừa khung.
+- **Chạy clip `IDLE` một nhịp cho mô hình có xương.** Rig ở tư thế nghỉ là hai tay dang ngang
+  và chân duỗi thẳng — một hình nộm, không phải một người.
+- **Ẩn hẳn cái bệ khi chưa chọn mục.** Ở chế độ lưới thì thẻ trải hết bề ngang, nên cái bệ
+  chỉ là một khối nằm sau đám chữ: nó không nói gì mà lại tranh mắt.
+- **Bệ phải THẤP và NGUỘI màu.** Bản đầu dùng `themDa` (đá thềm, ngả kem) cho mặt bệ, và dưới
+  nắng vàng của bộ stylized nó ra một cái đĩa CAM to hơn cả vật đứng trên nó — cái bệ giành
+  mất chỗ của thứ nó phải tôn lên.
+- **Thứ tự Euler của đàn kiếm trưng bày phải là `YXZ`.** Geometry hướng mũi về +Z; muốn mũi
+  chĩa lên và hơi ngả ra ngoài thì phải ngửa quanh X trước rồi mới quay quanh Y để về chỗ
+  ngồi, tức Y là phép quay NGOÀI CÙNG. Với thứ tự `XYZ` mặc định thì Y nằm trong, và kết quả
+  là mười hai thanh nằm ngang xoè ra như nan hoa bánh xe.
+- **Hai vòng sáu thanh, không phải một vòng mười hai.** Một vòng đơn nhìn từ góc iso thì sáu
+  thanh phía sau bị sáu thanh phía trước che gần hết, nên đếm ra khoảng bảy. Hai vòng lệch
+  cao độ và lệch pha nửa bước thì con số mười hai đếm được bằng mắt — mà đếm được mới là
+  điều làm nó đáng nhìn.
+- **Trang chi tiết dán vào mép phải (`margin-left: auto`),** lưới co về mép trái. Khoảng
+  trống ở giữa chính là chỗ đứng của bệ xoay; không có dòng đó thì hai cột chữ dồn về trái
+  và mô hình nằm ngay dưới đám chữ.
+- **`Esc` lùi từng bước:** đang xem chi tiết thì về lưới, ở lưới mới ra menu. Đồ Giám là thứ
+  người ta lật qua lật lại chứ không xem một lượt rồi thôi.
+- Dữ liệu tự **ném lỗi lúc nạp module** nếu một `skills`/`unitId`/`prop` id trỏ vào chỗ không
+  có. Một id sai chỉ hiện ra khi có người bấm đúng mục đó, và lúc ấy nó là một ô trống chứ
+  không phải một lỗi.
+
+### Ba màn, và một cái bẫy z-index
+
+`main.ts` giờ điều phối ba `GameScene`: `arena` (lượt chơi), `terrace` (Luyện Kiếm Đài),
+`codex` (Đồ Giám). Hai chỗ phải sửa kèm:
+
+- **`DebugPanel` phải được dựng LẠI mỗi lần đổi màn.** Nó đọc `scene.debug` một lần lúc khởi
+  tạo để quyết định có hiện nhóm chiến đấu hay không; giữ nguyên một bảng qua các lần đổi màn
+  thì nó vẫn cầm hook của màn cũ — nút "sinh quái" vẫn sinh quái vào một `ArenaScene` đã bị
+  `unload`, và không có gì báo.
+- **Menu phải có `z-index`.** Trước đây nó nằm trên nhờ thứ tự DOM: nó được dựng SAU khi màn
+  đã nạp xong nên nằm cuối `#ui-root`. Từ lúc có ba màn thì thứ tự đó đảo ngược — menu dựng
+  một lần lúc khởi động, còn màn nạp lại mỗi lần đổi, nên lớp phủ của màn được thêm sau và đè
+  lên menu. Thẻ *"bấm ENTER để khởi trận"* của `WaveBanner` nằm chình ình giữa menu chính,
+  che mất hai nút.
 
 ### Ánh sáng
 
@@ -867,16 +1093,16 @@ số liệu, và đó là chỗ sai.
   phần chiến đấu trên mặt đất thành vô dụng ngay khi vào Trúc Cơ.
 - Đủ cao mới bỏ qua va chạm tĩnh (`FLY_CLEARANCE = 0.85`): bỏ ngay từ lúc nhấc lên
   thì nhân vật xuyên thẳng qua tảng đá đang đứng cạnh.
-- 33 thanh kiếm trúc gây sát thương theo **vòng quét có nhịp** (0,3 giây/mục tiêu),
-  không theo từng thanh. Tính theo từng thanh thì một con quái đứng đúng chỗ ăn 33 đòn
+- Đàn kiếm trúc gây sát thương theo **vòng quét có nhịp** (0,3 giây/mục tiêu),
+  không theo từng thanh. Tính theo từng thanh thì một con quái đứng đúng chỗ ăn cả bộ đòn
   trong một frame và chết tức khắc bất kể cảnh giới — phá vỡ luật chênh lệch cảnh giới,
   thứ quan trọng nhất của cả hệ chiến đấu.
 - Vòng kiếm **bung ra rồi GIỮ**, không loang ra mãi. Thử cho loang tới 7 unit trước:
-  33 thanh rải trên vòng lớn nhìn ra là một đống que bay tản mát và người chơi không
+  đàn kiếm rải trên vòng lớn nhìn ra là một đống que bay tản mát và người chơi không
   còn điều khiển được gì. Giữ vòng chặt (bán kính 3) thì đàn kiếm đặc, và người chơi
   **lái** được nó bằng cách đi bộ.
 - Lưỡi kiếm phải **nghiêng gần vuông góc** quanh trục bay. Để nằm ngang thì từ góc iso
-  nó đọc ra là một que gỗ rơi trên đất. Và 33 thanh phải chia thành **ba vòng đều quay
+  nó đọc ra là một que gỗ rơi trên đất. Và đàn kiếm phải chia thành **ba vòng đều quay
   ngược nhau** — rải tự do thì thành một đống que bay lộn xộn, chia vòng thì đọc ra
   ngay là một đội hình do người tu điều khiển.
 - Cột sáng đột phá dùng **cộng sáng (`AdditiveBlending`)**, không phủ mờ. Phủ mờ ở
@@ -904,7 +1130,7 @@ số liệu, và đó là chỗ sai.
 - [x] **M3** Combat cơ bản — combo 3 nhát, hitbox hình quạt, AI quái, thanh máu, HUD, VFX
 - [x] **M4** Pháp thuật & VFX — 6 chiêu, phi hành khí, trạng thái (khiên/băng/thiêu), thanh pháp thuật
 - [x] **M5+M6** Tu luyện, đột phá, vật phẩm — 13 tầng Luyện Khí, toạ thiền, Tiểu Bình,
-      màn thử dẫn khí + `BreakthroughFx`, Trúc Cơ → Ngự Kiếm Phi Hành, Kết Đan → 33 kiếm trúc,
+      màn thử dẫn khí + `BreakthroughFx`, Trúc Cơ → Ngự Kiếm Phi Hành, Kết Đan → đàn kiếm trúc,
       drop table, túi đồ, luyện đan, ba bảng UI
 - [x] **M7** Tướng & đại chiến — bộ điều phối 6 đợt, đệ tử đồng môn AI, lớp quân hậu cảnh
       instanced, Ma Đạo Trúc Cơ (bài học chênh cảnh giới), Mặc Đại Phu 3 phase, thanh máu

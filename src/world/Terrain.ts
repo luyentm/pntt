@@ -20,6 +20,15 @@ export interface HeightField {
   heightAt(x: number, z: number): number
 }
 
+/**
+ * Mặt đất PHẲNG tuyệt đối ở cao độ 0.
+ *
+ * Có cho Luyện Kiếm Đài: đài là một tấm đá phẳng, không phải một sườn núi. Dùng
+ * một `Terrain` với `flatRadius` lớn cũng ra phẳng, nhưng nó vẫn dựng một lưới
+ * 72×72 đỉnh và một mesh nằm dưới đài, thứ không ai nhìn thấy bao giờ.
+ */
+export const FLAT_GROUND: HeightField = { heightAt: () => 0 }
+
 export interface TerrainOptions {
   /** Chiều rộng bản đồ (world unit). */
   size?: number

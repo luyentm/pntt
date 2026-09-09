@@ -7,6 +7,8 @@ import { DebugPanel } from '@/debug/DebugPanel'
 import { StylizedToggle } from '@/render/stylized'
 import { Menu } from '@/ui/Menu'
 import { ArenaScene } from '@/world/ArenaScene'
+import { CodexScene } from '@/world/CodexScene'
+import { SwordTerraceScene } from '@/world/SwordTerraceScene'
 
 const canvasEl = document.getElementById('game-canvas')
 if (!(canvasEl instanceof HTMLCanvasElement)) {
@@ -50,27 +52,82 @@ const storage: SaveStorage = {
 let settings: Settings = loadSettings(storage)
 
 const game = new Game(canvas)
-const scene = new ArenaScene()
-scene.storage = storage
-
-// Nạp màn TRƯỚC khi dựng bảng debug: bảng đọc hook debug của màn lúc khởi tạo,
-// nên nếu dựng trước thì nhóm điều khiển chiến đấu sẽ không xuất hiện
-await game.setScene(scene)
-// Bộ môi trường stylized/fantasy — BẬT SẴN, tắt được trong bảng debug để so
-// sánh trực tiếp với bộ mặc định trên cùng một cảnh.
-//
-// Vị trí đèn lạnh do màn cấp: nó là nơi biết bốn cột đá đứng đâu. Bật ở đây,
-// sau `setScene` và TRƯỚC `DebugPanel`, để ô tick trong bảng debug đọc được
-// trạng thái thật ngay lúc dựng.
 const stylized = new StylizedToggle(game)
 game.stylized = stylized
-stylized.enable(scene.coolSpots)
-const debug = new DebugPanel(game)
 const sfx = new Sfx(game.bus, settings.sfxVolume)
+
+/**
+ * Ba màn của bản này.
+ *
+ * `arena` là lượt chơi thật; `terrace` là Luyện Kiếm Đài; `codex` là Đồ Giám.
+ * Chúng là ba `GameScene` riêng chứ không phải ba chế độ của một màn, và đó là
+ * điều làm cả ba đơn giản: đấu trường không phải hỏi "có đang trình diễn không"
+ * ở bảy chỗ khác nhau, còn Đồ Giám thì không có combat để mà tắt.
+ */
+type SceneKey = 'arena' | 'terrace' | 'codex'
+
+let arena: ArenaScene | null = null
+let terrace: SwordTerraceScene | null = null
+let codex: CodexScene | null = null
+let currentKey: SceneKey | null = null
+/**
+ * Bảng debug được DỰNG LẠI mỗi lần đổi màn.
+ *
+ * Bắt buộc, không phải chuyện gọn gàng: `DebugPanel` đọc `scene.debug` MỘT LẦN
+ * lúc khởi tạo để quyết định có hiện nhóm chiến đấu hay không. Giữ nguyên một
+ * bảng qua các lần đổi màn thì nó vẫn cầm hook của màn cũ — tức nút "sinh quái"
+ * vẫn sinh quái vào một `ArenaScene` đã bị `unload`, và không có gì báo.
+ */
+let debug: DebugPanel | null = null
+
+/** Màn đang chạy, ở dạng đọc được chung — chỉ dùng cho cài đặt và đèn stylized. */
+function activeScene(): ArenaScene | SwordTerraceScene | CodexScene | null {
+  if (currentKey === 'arena') return arena
+  if (currentKey === 'terrace') return terrace
+  if (currentKey === 'codex') return codex
+  return null
+}
+
+async function gotoScene(key: SceneKey): Promise<void> {
+  if (currentKey === key) return
+
+  // Vứt bỏ màn cũ: mỗi màn dựng UI riêng vào #ui-root và đăng ký listener riêng
+  // trên bus, nên giữ lại một màn đã rời đi là giữ lại cả lớp phủ của nó
+  if (key !== 'arena') arena = null
+  if (key !== 'terrace') terrace = null
+  if (key !== 'codex') codex = null
+
+  let scene: ArenaScene | SwordTerraceScene | CodexScene
+  if (key === 'arena') {
+    arena = new ArenaScene()
+    arena.storage = storage
+    scene = arena
+  } else if (key === 'terrace') {
+    terrace = new SwordTerraceScene()
+    scene = terrace
+  } else {
+    codex = new CodexScene()
+    scene = codex
+  }
+
+  currentKey = key
+  await game.setScene(scene)
+
+  // Đèn lạnh do MÀN cấp: nó là nơi biết cột đá đứng đâu. Đồ Giám không có cột
+  // nào nên nó không cấp — bộ stylized tự chạy với danh sách rỗng.
+  const spots = 'coolSpots' in scene ? scene.coolSpots : []
+  stylized.enable(spots)
+  applySettings(settings)
+
+  debug?.dispose()
+  debug = new DebugPanel(game)
+}
 
 function applySettings(next: Settings): void {
   settings = next
-  scene.player.autoAim = next.autoAim
+  // Chỉ màn có người chơi mới có tuỳ chọn tự ngắm; Đồ Giám thì không
+  const scene = activeScene()
+  if (scene && 'player' in scene && scene.player) scene.player.autoAim = next.autoAim
   game.renderer.resolutionScale = next.resolutionScale
   game.lighting.shadowsEnabled = next.shadows
   game.composer.enabled = next.postFx
@@ -82,7 +139,6 @@ function applySettings(next: Settings): void {
   sfx.setVolume(next.sfxVolume)
   saveSettings(storage, next)
 }
-applySettings(settings)
 
 /** Mô tả bản lưu hiện có, hoặc null nếu chưa có. */
 function saveInfo(): string | null {
@@ -93,29 +149,33 @@ function saveInfo(): string | null {
 
 const menu = new Menu(uiRoot, settings, {
   continueSave: () => {
-    scene.exitDemo()
-    const data = loadGame(storage)
-    if (data) scene.applySave(data)
-    enterPlay()
+    void gotoScene('arena').then(() => {
+      const data = loadGame(storage)
+      if (data && arena) arena.applySave(data)
+      enterPlay()
+    })
   },
   newGame: () => {
     clearSave(storage)
-    scene.exitDemo()
-    scene.resetProgress()
-    enterPlay()
+    void gotoScene('arena').then(() => {
+      arena?.resetProgress()
+      enterPlay()
+    })
   },
   showcase: () => {
-    // KHÔNG xoá bản lưu và không ghi gì: chế độ này chỉ để xem, nên nó không
-    // được phép chạm vào tiến độ của người chơi
-    scene.enterDemo()
-    enterPlay()
+    // KHÔNG xoá bản lưu và không ghi gì. Luyện Kiếm Đài là một màn RIÊNG nên nó
+    // vật lý không có đường nào chạm tới tiến độ: nó không cầm `storage`, không
+    // có `save()`, và cảnh giới nó đặt cho nhân vật nằm trong một `Player` khác
+    // hẳn với `Player` của đấu trường.
+    void gotoScene('terrace').then(enterPlay)
+  },
+  codex: () => {
+    void gotoScene('codex').then(enterPlay)
   },
   resume: () => enterPlay(),
   saveAndQuit: () => {
-    // Ở chế độ trình diễn thì KHÔNG lưu: nó không phải một lượt chơi, và ghi
-    // cảnh giới Kết Đan của chế độ xem vào bản lưu sẽ xoá sạch tiến độ thật
-    if (scene.demoMode) scene.exitDemo()
-    else scene.save(Date.now())
+    // Chỉ đấu trường mới có gì để lưu. Hai màn kia không phải một lượt chơi.
+    arena?.save(Date.now())
     openMenu('main')
   },
   changeSettings: (patch) => {
@@ -141,9 +201,8 @@ function enterPlay(): void {
 
 game.bus.on('game:pauseRequest', () => {
   if (menu.isOpen) return
-  // Chế độ trình diễn không có gì để "tạm dừng" — Esc là đường ra
-  if (scene.demoMode) {
-    scene.exitDemo()
+  // Hai màn xem không có gì để "tạm dừng" — Esc là đường ra thẳng về menu chính
+  if (currentKey !== 'arena') {
     openMenu('main')
     return
   }
@@ -153,7 +212,8 @@ game.bus.on('game:pauseRequest', () => {
 // Đóng menu tạm dừng bằng Esc. Bắt ở đây chứ không trong Input: lúc menu đang
 // mở thì màn không chạy fixedUpdate nữa, nên không ai đọc phím giúp được.
 window.addEventListener('keydown', (e) => {
-  if (e.code !== 'Escape' || !menu.isOpen) return
+  if (e.code !== 'Escape') return
+  if (!menu.isOpen) return
   if (menu.current === 'settings') {
     menu.show('pause')
     return
@@ -164,8 +224,8 @@ window.addEventListener('keydown', (e) => {
 // Lưu khi rời trang. 'visibilitychange' đáng tin hơn 'beforeunload' trên mobile
 // và khi tab bị đóng đột ngột.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && !menu.isOpen && !scene.demoMode) {
-    scene.save(Date.now())
+  if (document.visibilityState === 'hidden' && !menu.isOpen && currentKey === 'arena') {
+    arena?.save(Date.now())
   }
 })
 
@@ -189,10 +249,14 @@ function pollDebug(nowMs: number): void {
 
   if (nowMs - lastPollMs >= DEBUG_POLL_MS) {
     lastPollMs = nowMs
-    debug.update()
+    debug?.update()
   }
   requestAnimationFrame(pollDebug)
 }
+
+// Màn mở đầu là đấu trường: menu chính vẫn VẼ thế giới phía sau, và một màn hình
+// đen ở đó sẽ che mất thứ duy nhất bán được trò chơi này — chính cái sơn môn.
+await gotoScene('arena')
 
 game.start()
 requestAnimationFrame(pollDebug)
@@ -205,12 +269,24 @@ declare global {
   interface Window {
     __pntt?: {
       game: Game
-      debug: DebugPanel
-      scene: ArenaScene
       menu: Menu
       sfx: Sfx
       stylized: StylizedToggle
+      /** Màn đang chạy. Đổi màn thì đọc lại qua getter này, đừng giữ tham chiếu. */
+      readonly scene: ArenaScene | SwordTerraceScene | CodexScene | null
+      readonly debug: DebugPanel | null
     }
   }
 }
-window.__pntt = { game, debug, scene, menu, sfx, stylized }
+window.__pntt = {
+  game,
+  menu,
+  sfx,
+  stylized,
+  get scene() {
+    return activeScene()
+  },
+  get debug() {
+    return debug
+  },
+}

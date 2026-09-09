@@ -21,16 +21,24 @@ import { Palette } from '@/art/Palette'
  * bắn ra một chùm 4–10 nan hoa. Hồ chật thì `pick()` bắt đầu cắt vệt ĐANG BÁM —
  * mà cắt vệt đang bám thì nó mất đột ngột giữa đường, chứ không tan.
  *
- * 128 là con số ĐO ĐƯỢC, không phải chọn bừa. Lúc nặng nhất — 33 kiếm trúc +
- * vệt chạy + hai vụ nổ + một pháp vực — đếm được 96 vệt cùng sống, tức đúng
- * bằng hạn mức cũ: hồ bão hoà và các nét một lần bắt đầu bị cắt sớm. 128 để
- * đúng khoảnh khắc đó còn dư chỗ.
+ * Con số này ĐO ĐƯỢC, không chọn bừa, và đã phải nâng hai lần:
+ *
+ *  - 64 → 128 khi đàn kiếm còn 33 thanh. Lúc nặng nhất — 33 kiếm + vệt chạy +
+ *    hai vụ nổ + một pháp vực — đếm được 96 vệt cùng sống, tức đã bão hoà hạn
+ *    mức cũ và các nét một lần bắt đầu bị cắt sớm.
+ *  - 128 → 192 khi đàn kiếm lên đủ 72 thanh (xem `SWORD_CAPACITY`). Đo ở Luyện
+ *    Kiếm Đài đúng lúc PHÁT LẠI chiêu: 128/128 ô đang sống, trong đó 56 ô là vệt
+ *    của lượt trước đang tan. Phát lại thả cả 72 chỗ ngồi rồi lập tức xin 72 chỗ
+ *    mới, nên nhu cầu tức thời chạm 144 — vượt hạn mức, và `pick()` phải cắt.
+ *    `pick()` luôn hy sinh vệt ĐANG TAN trước nên thứ tự là đúng, nhưng cắt một
+ *    vệt đang tan vẫn đọc ra là nó biến mất chứ không phải nó tan.
  *
  * Chi phí của việc để rộng gần bằng không: hình học được cấp sẵn toàn bộ, và ô
  * không dùng bị gộp về một điểm nên tam giác của nó có diện tích 0 — GPU không
- * tô pixel nào, chỉ chạy đỉnh. 128 ô là 4608 đỉnh và 4352 tam giác.
+ * tô pixel nào, chỉ chạy đỉnh. 192 ô là 6912 đỉnh và 6528 tam giác, trên một
+ * khung Luyện Kiếm Đài đo được 41.804 tam giác / 234 draw call.
  */
-export const TRAIL_CAPACITY = 128
+export const TRAIL_CAPACITY = 192
 /** Số điểm xương sống của một vệt. Nhiều hơn = vệt dài và mượt hơn, tốn hơn. */
 export const TRAIL_SEGMENTS = 18
 

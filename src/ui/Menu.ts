@@ -1,3 +1,4 @@
+import { SWORD_CAPACITY } from '@/world/SwordStorm'
 import { SKILLS } from '@/game/data/skills'
 import { FPS_CAP_CHOICES, type Settings } from '@/game/Settings'
 
@@ -6,8 +7,10 @@ export type MenuScreen = 'main' | 'pause' | 'settings' | 'none'
 export interface MenuActions {
   /** Tiếp tục từ bản lưu (chỉ có ở menu chính khi có save). */
   continueSave(): void
-  /** Vào chế độ trình diễn thần thông. */
+  /** Vào Luyện Kiếm Đài — màn trình diễn thần thông. */
   showcase(): void
+  /** Mở Đồ Giám — bảng tra nhân vật, pháp bảo, yêu thú. */
+  codex(): void
   /** Bắt đầu lượt mới — xoá bản lưu. */
   newGame(): void
   /** Đóng menu tạm dừng, chơi tiếp. */
@@ -163,15 +166,24 @@ export class Menu {
       ),
     )
     this.body.appendChild(
-      this.button('Xem thần thông', () => this.actions.showcase()),
+      this.button('Luyện Kiếm Đài', () => this.actions.showcase()),
     )
     const demoNote = document.createElement('div')
     demoNote.className = 'menu-note'
-    // Đếm từ bảng SKILLS, không viết cứng con số: thêm một chiêu mà quên sửa
-    // dòng này thì menu nói sai với người chơi ngay ở màn đầu tiên
+    // Đếm từ bảng SKILLS và từ sức chứa đàn kiếm, không viết cứng con số: thêm
+    // một chiêu mà quên sửa dòng này thì menu nói sai với người chơi ngay ở màn
+    // đầu tiên. Dòng này ĐÃ từng nói sai — nó ghi 33 kiếm trong khi nguyên tác
+    // là 72, suốt cả thời gian con số đó nằm cứng trong chuỗi.
     demoNote.textContent =
-      `Trình diễn ${SKILLS.length} pháp thuật, ngự kiếm phi hành và 33 kiếm trúc — không ăn vào tiến độ.`
+      `Trình diễn ${SKILLS.length} pháp thuật qua bốn cảnh giới, ngự kiếm phi hành và ${SWORD_CAPACITY} kiếm trúc — không ăn vào tiến độ.`
     this.body.appendChild(demoNote)
+
+    this.body.appendChild(this.button('Đồ Giám', () => this.actions.codex()))
+    const codexNote = document.createElement('div')
+    codexNote.className = 'menu-note'
+    codexNote.textContent =
+      'Bảng tra: nhân vật, công pháp, pháp bảo, yêu thú — xem mô hình xoay và chỉ số.'
+    this.body.appendChild(codexNote)
 
     this.body.appendChild(this.button('Cài đặt', () => this.openSettings('main')))
 

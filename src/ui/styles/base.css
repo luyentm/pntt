@@ -939,6 +939,13 @@ html, body {
   inset: 0;
   display: none;
   place-items: center;
+  /* Trên MỌI lớp phủ của màn chơi.
+     Trước đây menu nằm trên nhờ thứ tự DOM — nó được dựng sau khi màn đã nạp
+     xong nên nằm cuối #ui-root. Từ lúc có ba màn thì thứ tự đó đảo ngược: menu
+     dựng một lần lúc khởi động, còn màn thì nạp lại mỗi lần đổi, nên lớp phủ
+     của màn được thêm SAU và đè lên menu. Thẻ "bấm ENTER để khởi trận" của
+     WaveBanner nằm chình ình giữa menu chính, che mất hai nút. */
+  z-index: 50;
   /* Làm mờ nền, KHÔNG che hẳn: thế giới vẫn được vẽ phía sau và đó là thứ
      duy nhất bán được trò chơi này */
   background: rgba(6, 8, 11, 0.62);
@@ -1257,4 +1264,290 @@ html, body {
 @keyframes showcase-pop {
   0% { box-shadow: inset 0 0 0 1px var(--kim), 0 0 26px rgba(217, 177, 84, 0.6); }
   100% { box-shadow: inset 0 0 0 1px rgba(217, 177, 84, 0.3), 0 8px 30px rgba(0, 0, 0, 0.55); }
+}
+
+/* ---------- Đồ Giám ---------- */
+.codex {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.codex.is-open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.codex-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 22px 10px;
+  background: linear-gradient(rgba(11, 14, 18, 0.92), rgba(11, 14, 18, 0));
+}
+.codex-title {
+  font-size: 22px;
+  letter-spacing: 0.14em;
+  color: var(--kim);
+}
+.codex-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(232, 226, 208, 0.5);
+}
+.codex-close {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--ui-radius);
+  font-family: inherit;
+  font-size: 11px;
+  color: rgba(232, 226, 208, 0.65);
+  background: rgba(24, 30, 38, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(232, 226, 208, 0.12);
+  cursor: pointer;
+}
+.codex-close:hover { color: var(--lua); }
+
+.codex-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  padding: 0 22px 20px;
+  gap: 18px;
+}
+
+/* Lưới chiếm cả bề ngang khi chưa chọn mục; co thành cột hẹp bên trái khi đã
+   chọn — sân khấu 3D nằm ở nửa trái nên cột phải nhường chỗ cho nó. */
+.codex-grid {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  transition: flex-basis 0.22s ease, max-width 0.22s ease;
+}
+.codex.is-detail .codex-grid {
+  flex: 0 0 210px;
+  max-width: 210px;
+}
+
+.codex-group {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 14px 0 7px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(217, 177, 84, 0.7);
+}
+.codex-group:first-child { margin-top: 0; }
+.codex-group i {
+  font-style: normal;
+  font-size: 9px;
+  color: rgba(232, 226, 208, 0.35);
+}
+
+.codex-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 8px;
+}
+.codex.is-detail .codex-cards { grid-template-columns: 1fr; }
+
+.codex-card {
+  padding: 10px 12px 11px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--ui-radius) var(--ui-radius) 0;
+  font-family: inherit;
+  text-align: left;
+  background: rgba(16, 21, 27, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(232, 226, 208, 0.07);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.codex-card:hover { background: rgba(28, 35, 44, 0.95); }
+.codex-card.is-active {
+  border-left-color: var(--kim);
+  background: rgba(28, 35, 44, 0.98);
+}
+.codex-card-name {
+  font-size: 13px;
+  color: var(--lua);
+}
+.codex-card-han {
+  margin-top: 1px;
+  font-size: 10px;
+  color: rgba(232, 226, 208, 0.4);
+}
+.codex-card-tag {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(232, 226, 208, 0.55);
+}
+.codex-card-realm {
+  margin-top: 5px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(217, 177, 84, 0.68);
+}
+
+/* Trang chi tiết — ẩn hẳn khi chưa chọn mục, để sân khấu 3D lộ ra */
+.codex-detail {
+  flex: 0 0 0;
+  width: 0;
+  overflow: hidden;
+  transition: flex-basis 0.22s ease;
+}
+.codex.is-detail .codex-detail {
+  flex: 0 0 min(380px, 38vw);
+  width: auto;
+  /* Dán vào MÉP PHẢI, không nằm sát ngay cạnh lưới: khoảng trống ở giữa chính
+     là chỗ đứng của bệ xoay. Không có dòng này thì hai cột chữ dồn về trái và
+     mô hình nằm ngay dưới đám chữ, tức không nhìn được cái nào ra hồn. */
+  margin-left: auto;
+  overflow-y: auto;
+  padding: 2px 4px 0 0;
+  scrollbar-width: thin;
+}
+
+.codex-back {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: var(--ui-radius);
+  font-family: inherit;
+  font-size: 10px;
+  color: rgba(232, 226, 208, 0.6);
+  background: rgba(24, 30, 38, 0.85);
+  cursor: pointer;
+}
+.codex-back:hover { color: var(--lua); }
+
+.codex-d-name {
+  margin-top: 10px;
+  font-size: 22px;
+  letter-spacing: 0.03em;
+  color: var(--kim);
+}
+.codex-d-han {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(232, 226, 208, 0.45);
+}
+.codex-d-realm {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(217, 177, 84, 0.75);
+}
+.codex-d-lore {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: rgba(232, 226, 208, 0.78);
+}
+.codex-d-head {
+  margin: 16px 0 7px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(217, 177, 84, 0.7);
+}
+
+.codex-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: rgba(232, 226, 208, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.codex-stats > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(11, 14, 18, 0.92);
+}
+.codex-stats i {
+  font-style: normal;
+  font-size: 10px;
+  color: rgba(232, 226, 208, 0.45);
+}
+.codex-stats b {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--lua);
+}
+
+.codex-phases {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.codex-phases li {
+  padding: 6px 10px;
+  margin-bottom: 3px;
+  border-left: 2px solid rgba(140, 43, 50, 0.7);
+  border-radius: 0 4px 4px 0;
+  background: rgba(11, 14, 18, 0.9);
+}
+.codex-phases b {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--lua);
+}
+.codex-phases span {
+  font-size: 10px;
+  color: rgba(232, 226, 208, 0.5);
+}
+
+.codex-skills {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.codex-skills li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  background: rgba(11, 14, 18, 0.9);
+}
+.codex-skills li > b {
+  width: 20px;
+  flex: none;
+  font-size: 15px;
+  font-weight: 400;
+  text-align: center;
+  color: rgba(217, 177, 84, 0.85);
+}
+.codex-skills li > div { flex: 1; min-width: 0; }
+.codex-skill-name {
+  display: block;
+  font-size: 12px;
+  color: var(--lua);
+}
+.codex-skill-meta {
+  display: block;
+  margin-top: 1px;
+  font-size: 9px;
+  color: rgba(232, 226, 208, 0.42);
+}
+.codex-skills em {
+  flex: none;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }

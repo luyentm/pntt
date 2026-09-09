@@ -58,11 +58,15 @@ Lõi không biết luật chơi; luật không biết đồ hoạ.
 ```
 core/     Game (trục chính) · Loop (fixed-timestep + nội suy) · Input · EventBus · Rng · noise
 render/   Renderer · IsoCamera · Lighting · Sky · Composer (outline + bloom) · stylized/
-world/    GameScene interface + ArenaScene (màn duy nhất) · Player · Agent · CombatWorld
-          · Collision · Projectile · SkillCaster · SwordStorm · Terrain · Crowd · Pickups
+world/    GameScene interface + BA màn: ArenaScene (lượt chơi) · SwordTerraceScene
+          (Luyện Kiếm Đài) · CodexScene (Đồ Giám). Player · Agent · CombatWorld
+          · Collision · Projectile · SkillCaster · SwordStorm · TrainingTarget
+          · Terrain · Crowd · Pickups
 game/     Luật chơi thuần số: Stats · Cultivation · Effects · Inventory · Alchemy
-          · SaveGame · Settings · WaveDirector · BreakthroughTrial · ShowcaseDirector
-game/data/ Nội dung: units · skills · items · recipes · realms · waves · dropTables · showcase
+          · SaveGame · Settings · Loadout · WaveDirector · BreakthroughTrial
+          · ShowcaseDirector
+game/data/ Nội dung: units · skills · items · recipes · realms · waves · dropTables
+          · showcase · codex · player
 art/      Rig + hàm dựng geometry (chibi, thú, prop, kiến trúc) · Palette · PropBatch
 anim/     Rig · Clip (keyframe biên dịch sang Float32Array) · clips/
 vfx/      Vfx (mặt tiền) · RibbonTrails · FootAura · SlashArc · AreaBurst · ...
@@ -82,13 +86,22 @@ Bốn đường nối đáng nhớ:
 - **`Combatant` ⟷ `CombatantView`** (`world/Combatant.ts`, `world/views.ts`) — logic giữ số
   và trạng thái, view chỉ trả lời "hãy diễn cảnh chạy / trúng đòn". Nhờ vậy test dựng
   `FakeView` và chạy được không cần WebGL.
-- **`ArenaScene`** là nơi lắp đặt: nó cầm collision, combat world, projectile, VFX, mọi
-  panel UI và các director. Đây là file lớn nhất (~1600 dòng) và là chỗ để tra "thứ này
-  được nối vào đâu".
+- **`ArenaScene`** là nơi lắp đặt của lượt chơi: nó cầm collision, combat world,
+  projectile, VFX, mọi panel UI và các director. Đây là file lớn nhất (~1470 dòng) và là
+  chỗ để tra "thứ này được nối vào đâu". Hai màn kia cố tình KHÔNG dùng lại nó — chế độ
+  trình diễn từng là một cờ `demoMode` chạy xuyên qua đấu trường, và mỗi hệ gameplay ở đó
+  (đợt sóng, quái nền, nhặt đồ, tự lưu, hồi sinh) phải mọc thêm một câu hỏi "có đang trình
+  diễn không". `main.ts` điều phối ba màn và dựng LẠI `DebugPanel` mỗi lần đổi.
 
 **Nội dung là data.** Thêm quái / chiêu / đan dược = thêm một entry trong `game/data/`,
 không viết system mới. Nếu thấy mình phải sửa `SkillCaster` để thêm một chiêu, hãy xem lại
 liệu nó có khớp vào một `SkillAction` sẵn có.
+
+**Hệ pháp thuật khoá theo `id`, không theo chỉ số mảng.** 17 chiêu chia bốn đại cảnh giới
+(Luyện Khí → Trúc Cơ → Kết Đan → Nguyên Anh), mà thanh chỉ có 10 ô — `game/Loadout.ts` gán ô
+cố định cho từng chiêu và cho chiêu cảnh giới cao chiếm chỗ chiêu cùng vai trò. Số liệu sát
+thương SUY từ `action` (`skillDamage`), không có trường gõ tay: thẻ ở Luyện Kiếm Đài và Đồ
+Giám đều đọc từ đó. `PLAYABLE_MAJOR_CAP` tách trần của lượt chơi khỏi trần của thang cảnh giới.
 
 **Từ vựng nghiệp vụ giữ nguyên tiếng Việt không dấu** trong tên biến: `tuVi`, `linhLuc`,
 `sinhLuc`, `cong`, `phong`, `thanThuc`, `toc`, `bao`, `phapVuc`, `phiHanh`. Đừng dịch sang
