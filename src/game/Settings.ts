@@ -3,6 +3,8 @@ import type { SaveStorage } from './SaveGame'
 export const SETTINGS_KEY = 'pntt:settings'
 
 export interface Settings {
+  /** Tự ngắm thay cho ngắm bằng chuột. */
+  autoAim: boolean
   /** Tỉ lệ phân giải render, 0.5..1. */
   resolutionScale: number
   shadows: boolean
@@ -14,6 +16,10 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  // Bật mặc định: ngắm bằng chuột đòi người chơi bấm WASD, kéo xoay camera và
+  // giữ con trỏ trên con quái cùng lúc — ở góc iso xoay được thì gần như không
+  // làm nổi, và một nhát trượt vì lệch mười độ đọc ra là "game không nhận input"
+  autoAim: true,
   resolutionScale: 1,
   shadows: true,
   postFx: true,
@@ -69,6 +75,7 @@ export function loadSettings(storage: SaveStorage): Settings {
 
   const cap = Math.floor(num(o.fpsCap, DEFAULT_SETTINGS.fpsCap))
   return {
+    autoAim: bool(o.autoAim, DEFAULT_SETTINGS.autoAim),
     resolutionScale: clamp(num(o.resolutionScale, DEFAULT_SETTINGS.resolutionScale), 0.5, 1),
     shadows: bool(o.shadows, DEFAULT_SETTINGS.shadows),
     postFx: bool(o.postFx, DEFAULT_SETTINGS.postFx),

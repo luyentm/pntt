@@ -21,6 +21,7 @@ import { materials } from '@/render/Materials'
 import type { IsoCamera } from '@/render/IsoCamera'
 import type { EventBus } from '@/core/EventBus'
 import type { GameEvents } from '@/core/events'
+import { AutoAim, AUTO_AIM_RANGE } from './AutoAim'
 import type { CollisionWorld } from './Collision'
 import { Combatant } from './Combatant'
 import type { CombatWorld } from './CombatWorld'
@@ -120,6 +121,16 @@ export class Player {
   /** Linh lực hiện tại. Chưa tiêu vào đâu tới M4, nhưng đã hồi để HUD nói thật. */
   linhLuc = 0
 
+  /**
+   * Tự ngắm thay cho ngắm bằng chuột. Bật mặc định.
+   *
+   * Vẫn giữ đường ngắm bằng chuột phía sau một công tắc trong Cài đặt chứ không
+   * xoá: nó vẫn là cách ngắm chính xác nhất khi người chơi muốn chọn đúng một
+   * con trong đám, chỉ là không nên là mặc định.
+   */
+  autoAim = true
+  readonly aim = new AutoAim()
+
   /** Đang cưỡi phi kiếm. */
   flying = false
   /** Cao độ hiện tại trên mặt đất — nội suy nên lúc lên/xuống thấy được. */
@@ -133,6 +144,10 @@ export class Player {
   private phaseTimer = 0
   private chainTimer = 0
   private queuedAttack = false
+
+  /** Hướng đi mong muốn của bước này, đã quy theo góc camera. */
+  private moveDirX = 0
+  private moveDirZ = 0
 
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
@@ -338,6 +353,15 @@ export class Player {
     }
 
     this.updateFlight(dt, input)
+    // Hướng đi tính MỘT LẦN ở đây rồi dùng lại cho cả tự ngắm và di chuyển:
+    // tự ngắm cần biết người chơi đang chạy về đâu, mà nó chạy trước bước di
+    // chuyển, nên nếu để updateMovement tự tính thì tự ngắm phải tính lại
+    this.computeMoveDir(input, camera)
+    if (this.autoAim) {
+      this.aim.update(me, world, AUTO_AIM_RANGE, this.moveDirX, this.moveDirZ)
+    } else {
+      this.aim.clear()
+    }
     this.updateAim(input, camera, dt)
     this.updateSkills(dt, input, camera, world, projectiles, swords)
     // Đang cưỡi kiếm thì không chém: hai chân đang đứng trên chính thanh kiếm
@@ -442,20 +466,24 @@ export class Player {
     swords: SwordStorm,
   ): void {
     const me = this.combatant
-    // Điểm ngắm dưới con trỏ, chiếu ở đúng cao độ chân nhân vật
+    // Điểm ngắm: mục tiêu tự ngắm nếu có, không thì điểm dưới con trỏ chiếu ở
+    // đúng cao độ chân nhân vật
     camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.cursor, me.y)
+    const target = this.autoAim ? this.aim.target : null
     const ctx = {
       world,
       projectiles,
       swords,
-      cursorX: this.cursor.x,
-      cursorZ: this.cursor.z,
+      cursorX: target ? target.pos.x : this.cursor.x,
+      cursorZ: target ? target.pos.z : this.cursor.z,
+      dashDirX: this.moveDirX,
+      dashDirZ: this.moveDirZ,
     }
 
     const slot = input.skillPressed()
     if (slot >= 0) {
       // Quay mặt về điểm ngắm TRƯỚC khi thi triển: chiêu bay theo hướng nhân vật
-      this.faceCursor()
+      this.faceAim(ctx.cursorX, ctx.cursorZ)
       const result = this.caster.tryCast(slot, this.realm, this.linhLuc, ctx)
       if (result.ok) {
         this.linhLuc -= result.cost
@@ -475,10 +503,10 @@ export class Player {
   }
 
   /** Quay tức thì về điểm ngắm — dùng lúc bắt đầu thi triển pháp thuật. */
-  private faceCursor(): void {
+  private faceAim(x: number, z: number): void {
     const me = this.combatant
-    const dx = this.cursor.x - me.pos.x
-    const dz = this.cursor.z - me.pos.z
+    const dx = x - me.pos.x
+    const dz = z - me.pos.z
     if (Math.hypot(dx, dz) < 0.3) return
     me.facing = Math.atan2(dx, dz)
   }
@@ -600,6 +628,14 @@ export class Player {
   private updateAim(input: Input, camera: IsoCamera, dt: number): void {
     if (this.phase !== 'windup') return
     const me = this.combatant
+
+    if (this.autoAim) {
+      const angle = this.aim.angleTo(me)
+      if (angle === null) return
+      me.facing = turnToward(me.facing, angle, ATTACK_TURN_RATE * dt)
+      return
+    }
+
     if (!camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.aimPoint, me.y)) return
     const dx = this.aimPoint.x - me.pos.x
     const dz = this.aimPoint.z - me.pos.z
@@ -655,6 +691,16 @@ export class Player {
   /** Chỉnh hướng vào địch gần nhất nếu nó đã nằm trong góc ngắm. */
   private applyAimAssist(world: CombatWorld, step: AttackStep): void {
     const me = this.combatant
+
+    // Tự ngắm: quay HẲN vào mục tiêu, không giới hạn góc. Giới hạn góc là để
+    // tôn trọng hướng người chơi đang ngắm bằng chuột — mà ở chế độ tự ngắm thì
+    // người chơi không ngắm gì cả, nên giữ nó lại chỉ làm đòn chém ra sau lưng.
+    if (this.autoAim) {
+      const angle = this.aim.angleTo(me)
+      if (angle !== null) me.facing = angle
+      return
+    }
+
     const reach = (step.range + me.radius) * AIM_ASSIST_REACH
     const foe = world.nearestHostile(me, reach)
     if (!foe) return
@@ -689,20 +735,38 @@ export class Player {
     }
   }
 
+  /**
+   * Quy input WASD về hướng trong thế giới, theo GÓC CAMERA.
+   *
+   * Theo góc camera chứ không theo trục thế giới: người chơi xoay camera thì "W"
+   * phải luôn là "đi lên phía trên màn hình".
+   *
+   * Kết quả là vector ĐÃ chuẩn hoá, hoặc (0,0) khi không bấm gì.
+   */
+  private computeMoveDir(input: Input, camera: IsoCamera): void {
+    const axis = input.moveAxis()
+    camera.forwardOnGround(this.forward)
+    camera.rightOnGround(this.right)
+    const dx = this.right.x * axis.x + this.forward.x * -axis.z
+    const dz = this.right.z * axis.x + this.forward.z * -axis.z
+    const len = Math.hypot(dx, dz)
+    if (len > 1e-4) {
+      this.moveDirX = dx / len
+      this.moveDirZ = dz / len
+    } else {
+      this.moveDirX = 0
+      this.moveDirZ = 0
+    }
+  }
+
   private updateMovement(
     dt: number,
     input: Input,
-    camera: IsoCamera,
+    _camera: IsoCamera,
     collision: CollisionWorld,
   ): void {
-    const axis = input.moveAxis()
-
-    // Hướng đi tính theo GÓC CAMERA, không theo trục thế giới: người chơi xoay
-    // camera thì "W" phải luôn là "đi lên phía trên màn hình"
-    camera.forwardOnGround(this.forward)
-    camera.rightOnGround(this.right)
-    let dx = this.right.x * axis.x + this.forward.x * -axis.z
-    let dz = this.right.z * axis.x + this.forward.z * -axis.z
+    const dx = this.moveDirX
+    const dz = this.moveDirZ
 
     const inputLen = Math.hypot(dx, dz)
     const walking = input.isDown('ShiftLeft') || input.isDown('ShiftRight')
@@ -717,8 +781,6 @@ export class Player {
     const targetSpeed = inputLen > 1e-4 ? base * attackScale : 0
 
     if (inputLen > 1e-4) {
-      dx /= inputLen
-      dz /= inputLen
       const k = 1 - Math.exp(-ACCEL * dt)
       this.vx += (dx * targetSpeed - this.vx) * k
       this.vz += (dz * targetSpeed - this.vz) * k

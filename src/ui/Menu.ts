@@ -207,6 +207,16 @@ export class Menu {
     this.sub.textContent = 'Đổi là áp dụng ngay, và được ghi nhớ cho lần sau'
 
     this.body.appendChild(
+      this.toggle('Tự ngắm', this.settings.autoAim, (v) =>
+        this.actions.changeSettings({ autoAim: v }),
+      ),
+    )
+    const aimNote = document.createElement('div')
+    aimNote.className = 'menu-note menu-note--dim'
+    aimNote.textContent = 'Tắt tự ngắm thì đòn đánh và pháp thuật đi theo con trỏ chuột.'
+    this.body.appendChild(aimNote)
+
+    this.body.appendChild(
       this.slider('Tỉ lệ phân giải', this.settings.resolutionScale, 0.5, 1, 0.05, (v) => {
         this.actions.changeSettings({ resolutionScale: v })
       }, (v) => `${Math.round(v * 100)}%`),

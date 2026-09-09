@@ -180,7 +180,7 @@ describe('Settings', () => {
 
   it('lưu rồi nạp lại ra đúng', () => {
     const s = fakeStorage()
-    const want = { resolutionScale: 0.75, shadows: false, postFx: false, fpsCap: 120, sfxVolume: 0.2 }
+    const want = { autoAim: false, resolutionScale: 0.75, shadows: false, postFx: false, fpsCap: 120, sfxVolume: 0.2 }
     saveSettings(s, want)
     expect(loadSettings(s)).toEqual(want)
   })
@@ -191,9 +191,10 @@ describe('Settings', () => {
     const s = fakeStorage()
     s.map.set(
       SETTINGS_KEY,
-      JSON.stringify({ resolutionScale: 40, shadows: 'có', postFx: 1, fpsCap: 999, sfxVolume: -3 }),
+      JSON.stringify({ autoAim: 'có', resolutionScale: 40, shadows: 'có', postFx: 1, fpsCap: 999, sfxVolume: -3 }),
     )
     const got = loadSettings(s)
+    expect(got.autoAim).toBe(DEFAULT_SETTINGS.autoAim)
     expect(got.resolutionScale).toBe(1)
     expect(got.shadows).toBe(DEFAULT_SETTINGS.shadows)
     expect(got.postFx).toBe(DEFAULT_SETTINGS.postFx)

@@ -287,12 +287,40 @@ describe('SkillCaster', () => {
       expect(caster.dash.vz).toBe(0)
     })
 
-    it('lướt đi theo hướng nhân vật đang nhìn', () => {
+    it('không bấm hướng nào thì lướt theo hướng đang nhìn', () => {
       me.facing = Math.PI / 2 // nhìn về +X
       caster.tryCast(slotOf('phongDon'), HIGH, 999, ctx)
       runCast(caster, ctx, 0.06)
       expect(caster.dash.vx).toBeGreaterThan(0)
       expect(Math.abs(caster.dash.vz)).toBeLessThan(Math.abs(caster.dash.vx) * 0.1)
+    })
+
+    it('lướt theo HƯỚNG ĐANG ĐI, không theo hướng đang nhìn', () => {
+      // Bắt buộc từ khi có tự ngắm: ở chế độ đó hướng nhìn LUÔN chỉ vào con
+      // quái, mà Phong Độn Thuật là nút NÉ ĐÒN. Lướt thẳng vào con vừa vung đòn
+      // thì nó thành nút tự sát, đúng lúc người chơi bấm nó để thoát.
+      me.facing = 0 // nhìn về +Z
+      const away = { ...ctx, dashDirX: 0, dashDirZ: -1 } // bấm lùi về -Z
+      caster.tryCast(slotOf('phongDon'), HIGH, 999, away)
+      runCast(caster, away, 0.06)
+      expect(caster.dash.vz).toBeLessThan(0)
+      expect(Math.abs(caster.dash.vx)).toBeLessThan(Math.abs(caster.dash.vz) * 0.1)
+    })
+
+    it('hướng đi được chuẩn hoá — bấm chéo không lướt xa hơn bấm thẳng', () => {
+      const straight = { ...ctx, dashDirX: 0, dashDirZ: 1 }
+      caster.tryCast(slotOf('phongDon'), HIGH, 999, straight)
+      runCast(caster, straight, 0.06)
+      const speedStraight = Math.hypot(caster.dash.vx, caster.dash.vz)
+
+      caster.reset()
+      // Vector chéo chưa chuẩn hoá, độ dài ~1.41
+      const diagonal = { ...ctx, dashDirX: 1, dashDirZ: 1 }
+      caster.tryCast(slotOf('phongDon'), HIGH, 999, diagonal)
+      runCast(caster, diagonal, 0.06)
+      const speedDiagonal = Math.hypot(caster.dash.vx, caster.dash.vz)
+
+      expect(speedDiagonal).toBeCloseTo(speedStraight, 4)
     })
   })
 

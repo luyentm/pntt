@@ -29,7 +29,7 @@ import { Agent, type AgentContext } from './Agent'
 import type { Combatant, Side } from './Combatant'
 import { Palette } from '@/art/Palette'
 import { PropBatch } from '@/art/PropBatch'
-import { buildBoulder, buildGroundMarker, buildStoneFloor } from '@/art/props/nature'
+import { buildBoulder, buildGroundMarker, buildStoneFloor, buildTargetMarker } from '@/art/props/nature'
 import { bambooGeometry, pineGeometry, rockGeometry } from '@/art/props/geometries'
 import {
   buildAlchemyAltar,
@@ -102,6 +102,7 @@ export class ArenaScene implements GameScene {
   private ctx!: SceneContext
   private readonly objects: Object3D[] = []
   private marker?: Mesh
+  private targetMarker?: Mesh
   private readonly cursor = new Vector3()
   private vfx!: Vfx
   private hud!: Hud
@@ -266,6 +267,9 @@ export class ArenaScene implements GameScene {
 
     this.marker = buildGroundMarker(0.52)
     this.add(this.marker)
+    this.targetMarker = buildTargetMarker(0.6)
+    this.targetMarker.visible = false
+    this.add(this.targetMarker)
 
     this.combat = new CombatWorld(ctx.bus, rng)
     this.combat.add(this.player.combatant)
@@ -1129,8 +1133,26 @@ export class ArenaScene implements GameScene {
       shield ? Math.min(1, shield.magnitude / Math.max(1, me.stats.thanThuc * 5.5)) : 0,
     )
 
+    // Vòng chỉ mục tiêu tự ngắm, bám dưới chân con đang bị nhắm
+    if (this.targetMarker) {
+      const target = this.player.autoAim ? this.player.aim.target : null
+      if (target && !this.player.combatant.dead) {
+        this.targetMarker.position.set(target.pos.x, target.y + 0.06, target.pos.z)
+        // Vòng to theo con quái: cùng một vòng cho con yêu thử và cho Mặc Đại
+        // Phu thì hoặc quá to hoặc quá nhỏ, và không đọc ra là đang chỉ vào nó
+        const s = Math.max(1, target.radius / 0.3)
+        this.targetMarker.scale.set(s, 1, s)
+        this.targetMarker.visible = true
+      } else {
+        this.targetMarker.visible = false
+      }
+    }
+
+    // Con trỏ mặt đất chỉ có nghĩa ở chế độ ngắm bằng chuột
     if (this.marker) {
-      if (camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.cursor, this.player.y)) {
+      if (this.player.autoAim) {
+        this.marker.visible = false
+      } else if (camera.screenToGround(input.pointerNdcX, input.pointerNdcY, this.cursor, this.player.y)) {
         // Đặt theo cao độ THẬT của địa hình tại điểm đó, không theo mặt phẳng
         // chiếu — nếu không thì vòng sáng sẽ chìm vào đồi hoặc bay trên hố
         const y = this.terrain.heightAt(this.cursor.x, this.cursor.z)

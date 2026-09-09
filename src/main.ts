@@ -60,6 +60,7 @@ const sfx = new Sfx(game.bus, settings.sfxVolume)
 
 function applySettings(next: Settings): void {
   settings = next
+  scene.player.autoAim = next.autoAim
   game.renderer.resolutionScale = next.resolutionScale
   game.lighting.shadowsEnabled = next.shadows
   game.composer.enabled = next.postFx

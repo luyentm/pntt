@@ -12,9 +12,18 @@ export interface CastContext {
   projectiles: ProjectileSystem
   /** Đàn kiếm bay — chỉ chiêu `kiemVu` dùng tới. */
   swords: SwordStorm
-  /** Điểm con trỏ trên mặt đất — pháp vực đặt tại đây. */
+  /** Điểm ngắm trên mặt đất — pháp vực đặt tại đây. */
   cursorX: number
   cursorZ: number
+  /**
+   * Hướng lướt của Phong Độn Thuật. Bỏ trống thì lướt theo hướng đang nhìn.
+   *
+   * Cần tách khỏi hướng nhìn vì ở chế độ tự ngắm, hướng nhìn LUÔN chỉ vào con
+   * quái — mà Phong Độn Thuật là nút NÉ ĐÒN. Lướt thẳng vào con vừa vung đòn
+   * thì nó thành nút tự sát, đúng lúc người chơi bấm nó để thoát.
+   */
+  dashDirX?: number
+  dashDirZ?: number
 }
 
 export type CastPhase = 'none' | 'dan' | 'hoi'
@@ -183,10 +192,16 @@ export class SkillCaster {
 
       case 'thanPhap': {
         const { distance, duration } = def.action
+        // Ưu tiên hướng người chơi đang ĐI; không bấm phím nào thì mới theo
+        // hướng đang nhìn
+        const dirLen = Math.hypot(ctx.dashDirX ?? 0, ctx.dashDirZ ?? 0)
+        const dirX = dirLen > 1e-4 ? (ctx.dashDirX as number) / dirLen : Math.sin(me.facing)
+        const dirZ = dirLen > 1e-4 ? (ctx.dashDirZ as number) / dirLen : Math.cos(me.facing)
+
         this.dash.active = true
         this.dash.remaining = duration
-        this.dash.vx = (Math.sin(me.facing) * distance) / duration
-        this.dash.vz = (Math.cos(me.facing) * distance) / duration
+        this.dash.vx = (dirX * distance) / duration
+        this.dash.vz = (dirZ * distance) / duration
         // Miễn thương suốt cú lướt: đó chính là công dụng của Phong Độn Thuật —
         // một nút "né đòn", không phải chỉ là đi nhanh
         me.invuln = Math.max(me.invuln, duration + 0.05)
@@ -194,7 +209,7 @@ export class SkillCaster {
           x: me.pos.x,
           y: me.y,
           z: me.pos.z,
-          facing: me.facing,
+          facing: Math.atan2(dirX, dirZ),
           distance,
         })
         break

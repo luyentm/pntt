@@ -73,6 +73,23 @@ export function buildStoneFloor(radius = 6): Mesh {
 }
 
 /** Vòng sáng đánh dấu vị trí chuột trên mặt đất. */
+/**
+ * Vòng chỉ MỤC TIÊU tự ngắm.
+ *
+ * Dày và đậm hơn con trỏ mặt đất, và màu kim thay vì màu linh khí: nó phải đọc
+ * ra ngay là "con này sắp bị đánh". Không có nó thì tự ngắm thành ra một hộp đen
+ * — người chơi bấm chém mà không biết trước sẽ trúng con nào, và cảm giác điều
+ * khiển còn tệ hơn ngắm bằng chuột.
+ */
+export function buildTargetMarker(radius = 0.6): Mesh {
+  const geo = new RingGeometry(radius * 0.7, radius, 16)
+  geo.rotateX(-Math.PI / 2)
+  const mesh = new Mesh(geo, materials.glow(Palette.kim, 0.62))
+  mesh.name = 'targetMarker'
+  mesh.renderOrder = 6
+  return mesh
+}
+
 export function buildGroundMarker(radius = 0.6): Mesh {
   // Vòng MẢNH và mờ: đây là con trỏ, nó phải chỉ được chỗ đang ngắm mà không
   // giành sự chú ý với nhân vật và quái

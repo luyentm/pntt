@@ -64,6 +64,7 @@ hình không phản hồi.
 | `` ` `` | Ẩn/hiện bảng debug |
 | WASD / phím mũi tên | Di chuyển (theo hướng camera) |
 | Chuột trái (hoặc `J`) | Chém — bấm liên tiếp để nối combo 3 nhát. Giữ để chém liên tục |
+| — | **Tự ngắm bật mặc định**: đòn đánh và pháp thuật tự nhắm con quái có vòng vàng dưới chân. Tắt trong *Cài đặt* để ngắm bằng chuột |
 | Giữ Shift | Đi chậm |
 | `1`–`7` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù · 竹 Thanh Trúc Phong Vân Kiếm |
 | Giữ `F` | Toạ thiền — tăng Tu Vi chậm và đều. Tự thoát khi di chuyển hoặc bị đánh |
@@ -221,6 +222,35 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
 - Bảng debug nhịp **5 lần/giây**, không phải mỗi khung: `listen()` của lil-gui ghi
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
+
+### Tự ngắm
+
+- **Bật mặc định.** Ngắm bằng chuột đòi người chơi làm ba việc cùng lúc: bấm WASD để
+  đi, kéo chuột phải để xoay camera, và giữ con trỏ đúng trên con quái. Ở góc iso xoay
+  được thì việc thứ ba gần như không làm nổi, và một nhát chém trượt vì lệch mười độ
+  đọc ra là "game không nhận input" chứ không phải "mình ngắm sai". Vẫn giữ đường ngắm
+  bằng chuột sau một công tắc — nó chính xác hơn khi muốn chọn đúng một con trong đám.
+- **Chọn mục tiêu không phải "gần nhất".** Điểm quan trọng nhất là *dính mục tiêu*:
+  chọn thuần gần nhất gây ra đúng cái lỗi ai cũng gặp — đang đánh dở một con thì con
+  khác nhích lại gần hơn 10cm, đòn tiếp theo quay sang nó, và không con nào chết. Điểm
+  của một ứng viên là `khoảng cách + góc lệch × 1.7`, và mục tiêu đang nhắm được trừ
+  2.4 unit, nên nó chỉ đổi khi con mới rõ ràng hợp lý hơn.
+- **Hướng ưu tiên là hướng ĐANG ĐI**, không phải hướng đang nhìn: người chơi chạy về
+  phía nào thì muốn đánh phía đó. Không bấm phím nào thì mới lấy hướng nhìn.
+- **Vùng trễ ở mép tầm**: bắt mục tiêu mới trong bán kính 11, nhưng giữ mục tiêu cũ
+  tới 13.75. Bỏ đúng ở mép sẽ làm mục tiêu nhấp nháy vào/ra khi con quái đi lảng vảng
+  quanh mép. Bản đầu của tôi giữ mục tiêu qua bước kiểm tra rồi lại ghi đè bằng kết quả
+  truy vấn ở bán kính trong, nên vùng trễ không có tác dụng gì — test bắt được.
+- **Phải có vòng chỉ mục tiêu.** Không có nó thì tự ngắm là một hộp đen: người chơi bấm
+  chém mà không biết trước sẽ trúng con nào, và cảm giác điều khiển còn tệ hơn ngắm
+  bằng chuột. Vòng màu kim, dày hơn con trỏ mặt đất, và to theo bán kính con quái —
+  cùng một vòng cho con yêu thử và cho Mặc Đại Phu thì không đọc ra là đang chỉ vào nó.
+- **Ở chế độ tự ngắm thì bỏ giới hạn góc của hỗ trợ ngắm** (60°). Giới hạn đó tồn tại
+  để tôn trọng hướng người chơi đang ngắm bằng chuột; giữ lại khi không ai ngắm gì thì
+  chỉ làm đòn chém ra sau lưng.
+- **Phong Độn Thuật lướt theo hướng ĐANG ĐI, không theo hướng nhìn.** Bắt buộc từ khi
+  có tự ngắm: hướng nhìn luôn chỉ vào con quái, mà đây là nút né đòn — lướt thẳng vào
+  con vừa vung đòn thì nó thành nút tự sát, đúng lúc người chơi bấm nó để thoát.
 
 ### M8 — lưu, menu, âm thanh, cân bằng
 
