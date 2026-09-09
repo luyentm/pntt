@@ -223,7 +223,14 @@ export class CombatWorld {
   ): DamageResult | null {
     if (target.dead || target.invuln > 0) return null
 
-    const result = computeDamage(attacker, target, skillMult, this.rng)
+    // Giá Y Thần Công nhân ở ĐÂY, không trong `computeDamage`: nó phải ăn vào
+    // mọi đường sát thương — nhát kiếm, pháp vực, phi kiếm, đàn kiếm trúc — và
+    // đây là chỗ duy nhất mà cả bốn đều đi qua. Nhét vào công thức sát thương
+    // thì `computeDamage` phải biết tới hệ trạng thái, và nó là hàm thuần.
+    const giaY = attacker.effects.find('giaY')
+    const mult = giaY ? skillMult * (1 + giaY.magnitude) : skillMult
+
+    const result = computeDamage(attacker, target, mult, this.rng)
 
     // Khiên hấp thụ TRƯỚC khi trừ máu. Phần bị hấp thụ vẫn hiện lên như một con
     // số, nhưng màu khác — người chơi phải thấy được khiên đang làm việc, nếu

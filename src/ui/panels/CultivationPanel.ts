@@ -1,6 +1,6 @@
 import type { Cultivation } from '@/game/Cultivation'
 import { itemDef } from '@/game/data/items'
-import { MAJOR_REALMS, majorRealm, realmPower, tierCount } from '@/game/data/realms'
+import { MAJOR_REALMS, PLAYABLE_MAJOR_CAP, majorRealm, realmPower, tierCount } from '@/game/data/realms'
 import type { Inventory } from '@/game/Inventory'
 import type { CombatStats } from '@/game/Stats'
 import { Panel } from './Panel'
@@ -55,7 +55,7 @@ export class CultivationPanel extends Panel {
     const check = c.canBreakthrough(inventory)
     const pill = c.requiredPill()
     const nextMajor = c.realm.major + 1
-    const atTop = nextMajor >= MAJOR_REALMS.length
+    const atTop = nextMajor > PLAYABLE_MAJOR_CAP
 
     const tuViLine = c.atCap
       ? 'Đã tới đỉnh — chỉ còn đường đột phá'
@@ -123,10 +123,12 @@ export class CultivationPanel extends Panel {
       </div>
 
       <div class="cul-ladder">
-        ${MAJOR_REALMS.map((r, i) => {
-          const state = i < c.realm.major ? 'is-done' : i === c.realm.major ? 'is-here' : ''
-          return `<div class="cul-rung ${state}"><i></i><span>${r.name}</span></div>`
-        }).join('')}
+        ${MAJOR_REALMS.filter((_, i) => i <= PLAYABLE_MAJOR_CAP)
+          .map((r, i) => {
+            const state = i < c.realm.major ? 'is-done' : i === c.realm.major ? 'is-here' : ''
+            return `<div class="cul-rung ${state}"><i></i><span>${r.name}</span></div>`
+          })
+          .join('')}
       </div>
     `
 

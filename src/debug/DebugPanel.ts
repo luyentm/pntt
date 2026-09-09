@@ -74,43 +74,28 @@ export class DebugPanel {
     lights.add(game.lighting.sun, 'intensity', 0, 4, 0.05).name('Nắng')
     lights.add(game.lighting.hemi, 'intensity', 0, 2, 0.05).name('Môi trường')
     lights.add(game.lighting.rim, 'intensity', 0, 2, 0.05).name('Đèn viền')
-    lights
-      .add({ near: (game.three.fog as { near: number }).near }, 'near', 5, 120, 1)
-      .name('Sương: từ')
-      .onChange((v: number) => {
-        ;(game.three.fog as { near: number }).near = v
-      })
-    lights
-      .add({ far: (game.three.fog as { far: number }).far }, 'far', 40, 320, 2)
-      .name('Sương: đến')
-      .onChange((v: number) => {
-        ;(game.three.fog as { far: number }).far = v
-      })
+    // Gắn vào `sky.fog`, KHÔNG vào `scene.fog`: nhóm này tinh chỉnh bộ mặc định,
+    // mà `scene.fog` là `FogExp2` của bộ stylized trong lúc bộ đó bật — đọc
+    // `near` ở đó ra `undefined` và lil-gui chết ngay lúc dựng bảng.
+    lights.add(game.sky.fog, 'near', 5, 120, 1).name('Sương: từ')
+    lights.add(game.sky.fog, 'far', 40, 320, 2).name('Sương: đến')
     lights.close()
 
     // Bộ môi trường stylized/fantasy — bật để so sánh trực tiếp trên cùng cảnh
     const sty = this.gui.addFolder('Stylized / fantasy')
     sty
-      .add({ on: false }, 'on')
+      // Bật sẵn từ `main`, nên ô tick phải đọc trạng thái THẬT: một ô tick nói
+      // "tắt" trong lúc bộ đang chạy thì lần bấm đầu tiên không có tác dụng gì
+      .add({ on: game.stylized?.active ?? false }, 'on')
       .name('Bật bộ stylized')
       .onChange((v: boolean) => {
         const toggle = window.__pntt?.stylized
         if (!toggle) return
-        if (v) {
-          // Đèn xanh lục lam ở bốn cột đá quanh sân — chính là "các góc tàn tích".
-          //
-          // y = 1.4 chứ không 3.1: 3.1 là đúng chỗ chóp cột, và đèn đặt BÊN TRONG
-          // vật nó rọi thì khoảng cách gần bằng 0 nên với `decay: 2` chóp cột cháy
-          // trắng thành quầng bloom to nhất khung hình, hút mắt khỏi nhân vật.
-          // Ở 1.4 đèn nằm ngang thân cột và đổ một vũng lam ra mặt đất quanh chân.
-          const spots = [0, 1, 2, 3].map((i) => {
-            const a = (i / 4) * Math.PI * 2 + Math.PI / 4
-            return { x: Math.cos(a) * 9.2, y: 1.4, z: Math.sin(a) * 9.2 }
-          })
-          toggle.enable(spots)
-        } else {
-          toggle.disable()
-        }
+        // Không tự tính vị trí đèn lạnh ở đây: toggle nhớ vị trí của lần bật
+        // đầu (do màn cấp qua `scene.coolSpots`). Chép toạ độ sang bảng debug
+        // thì đổi bố cục sân là đèn treo lơ lửng giữa không khí.
+        if (v) toggle.enable()
+        else toggle.disable()
         sty.controllers.forEach((c) => c.updateDisplay())
       })
     sty
@@ -209,6 +194,10 @@ export class DebugPanel {
     cam.close()
 
     window.addEventListener('keydown', this.onKey)
+
+    // Gập sẵn, chỉ chừa thanh tiêu đề: mở hết ra thì bảng chiếm gần một phần ba
+    // màn hình và che đúng góc mà nhân vật hay chạy tới. Bấm vào tiêu đề là mở.
+    this.gui.close()
 
     // Bản phát hành thì ẩn sẵn, vẫn mở được bằng `.
     //

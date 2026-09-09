@@ -302,6 +302,12 @@ html, body {
   color: rgba(91, 143, 199, 0.3);
 }
 
+/* Ô hoàn toàn trống — không chiêu nào, kể cả chiêu sắp mở, khai ô này */
+.skill.is-empty {
+  opacity: 0.32;
+  box-shadow: inset 0 0 0 1px rgba(232, 226, 208, 0.05);
+}
+
 .skill.is-poor .skill-cost {
   color: var(--huyet);
 }
@@ -1072,12 +1078,32 @@ html, body {
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  /* 22 bước không lọt nổi một màn hình cao 800px — cột phải tự cuộn, và
+     `setStep` kéo dòng đang diễn vào tầm nhìn */
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
   pointer-events: auto;
 }
 
+/* Tiêu đề chương — cảnh giới, không phải một dòng bấm được */
+.showcase-chapter {
+  margin: 9px 0 3px;
+  padding-left: 11px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(217, 177, 84, 0.6);
+}
+.showcase-chapter:first-child { margin-top: 0; }
+
 .showcase-row {
-  padding: 5px 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 11px;
   border: 0;
   border-left: 2px solid transparent;
   border-radius: 0 4px 4px 0;
@@ -1089,6 +1115,15 @@ html, body {
   cursor: pointer;
   transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
+.showcase-row b {
+  width: 13px;
+  flex: none;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: center;
+  color: rgba(232, 226, 208, 0.42);
+}
+.showcase-row.is-active b { color: var(--kim); }
 .showcase-row:hover { color: var(--lua); background: rgba(24, 30, 38, 0.85); }
 .showcase-row.is-active {
   color: var(--kim);
@@ -1101,7 +1136,7 @@ html, body {
   left: 50%;
   bottom: 86px;
   transform: translateX(-50%);
-  width: min(520px, calc(100vw - 60px));
+  width: min(640px, calc(100vw - 60px));
   padding: 13px 20px 12px;
   border-radius: var(--ui-radius);
   background: rgba(11, 14, 18, 0.88);
@@ -1128,11 +1163,86 @@ html, body {
   color: var(--kim);
 }
 
+/* Tên gốc + cảnh giới mở — dòng nhỏ ngay dưới tên chiêu */
+.showcase-han {
+  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(232, 226, 208, 0.45);
+}
+.showcase-realm {
+  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: rgba(217, 177, 84, 0.6);
+}
+
+/* Ba ô số liệu: pháp bảo · sát thương · vai trò.
+   Chia ba cột đều thay vì ba dòng: người xem liếc một cái là so được ba chiêu
+   liền nhau, vì cùng một thông tin luôn nằm đúng một chỗ trên thẻ. */
+.showcase-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  margin-top: 9px;
+  text-align: left;
+  background: rgba(232, 226, 208, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.showcase-fact {
+  padding: 6px 9px 7px;
+  background: rgba(11, 14, 18, 0.92);
+}
+.showcase-fact i {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(232, 226, 208, 0.38);
+}
+.showcase-fact b {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--lua);
+}
+.showcase-fact u {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1.4;
+  text-decoration: none;
+  color: rgba(232, 226, 208, 0.52);
+}
+
+/* Bậc sát thương tô theo thang nóng dần — mắt đọc màu nhanh hơn đọc chữ */
+.is-band-khong { color: rgba(232, 226, 208, 0.5) !important; }
+.is-band-nhe { color: #8fb9d6 !important; }
+.is-band-vua { color: #7fe3d0 !important; }
+.is-band-nang { color: #f0d98a !important; }
+.is-band-cucNang { color: #ffa24a !important; }
+.is-band-huyDiet { color: #ff6a4a !important; }
+
+/* Một câu về pháp bảo và xuất xứ trong truyện */
+.showcase-lore {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  color: rgba(232, 226, 208, 0.58);
+}
+
 .showcase-note {
-  margin-top: 5px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(232, 226, 208, 0.1);
   font-size: 12px;
   line-height: 1.5;
-  color: rgba(232, 226, 208, 0.78);
+  text-align: left;
+  color: rgba(232, 226, 208, 0.82);
 }
 
 .showcase-keys {

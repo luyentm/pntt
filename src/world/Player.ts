@@ -15,6 +15,8 @@ import {
 import { REALM, realmOrdinal, type RealmPosition } from '@/game/data/realms'
 import { itemDef } from '@/game/data/items'
 import { Cultivation } from '@/game/Cultivation'
+import { loadoutFor } from '@/game/Loadout'
+import type { SkillDef } from '@/game/data/skills'
 import { Inventory } from '@/game/Inventory'
 import { deriveStats } from '@/game/Stats'
 import { materials } from '@/render/Materials'
@@ -149,6 +151,9 @@ export class Player {
   private moveDirX = 0
   private moveDirZ = 0
 
+  /** Ô nào giữ chiêu nào — tính lại mỗi lần cảnh giới đổi. */
+  private slots: ReadonlyArray<SkillDef | null> = []
+
   private readonly forward = new Vector3()
   private readonly right = new Vector3()
   private readonly aimPoint = new Vector3()
@@ -171,6 +176,7 @@ export class Player {
     )
     this.combatant.view.showIdle()
     this.linhLuc = stats.maxLinhLuc
+    this.slots = loadoutFor(this.cultivation.realm)
 
     // Gắn vào chibi.root, KHÔNG vào xương: phi kiếm phải đứng yên dưới chân
     // trong khi thân người nhấp nhô theo clip. Gắn vào xương thì kiếm cũng
@@ -240,7 +246,18 @@ export class Player {
     return this.ground ? this.ground.heightAt(x, z) : 0
   }
 
-  /** Cập nhật stat sau khi đột phá cảnh giới (M5). */
+  /**
+   * Ô nào giữ chiêu nào ở cảnh giới hiện tại.
+   *
+   * Tính lại trong `refreshStats` chứ không tính mỗi khung: nó chỉ đổi khi cảnh
+   * giới đổi, mà `loadoutFor` quét cả bảng pháp thuật — chạy nó 60 lần một giây
+   * để nhận về đúng một kết quả là lãng phí không có lý do.
+   */
+  get loadout(): ReadonlyArray<SkillDef | null> {
+    return this.slots
+  }
+
+  /** Cập nhật stat và thanh pháp thuật sau khi đột phá cảnh giới (M5). */
   refreshStats(): void {
     const hpRatio = this.combatant.hp / Math.max(1, this.combatant.stats.maxSinhLuc)
     const mpRatio = this.linhLuc / Math.max(1, this.combatant.stats.maxLinhLuc)
@@ -249,6 +266,7 @@ export class Player {
     // Giữ TỈ LỆ chứ không giữ con số: đột phá mà máu vẫn 30/1200 thì vô nghĩa
     this.combatant.hp = Math.max(1, Math.round(this.combatant.stats.maxSinhLuc * hpRatio))
     this.linhLuc = Math.round(this.combatant.stats.maxLinhLuc * mpRatio)
+    this.slots = loadoutFor(this.cultivation.realm)
   }
 
   /** Hồi sinh đầy máu tại chỗ chỉ định. */
@@ -491,10 +509,11 @@ export class Player {
     }
 
     const slot = input.skillPressed()
-    if (slot >= 0) {
+    const pressedId = slot >= 0 ? (this.slots[slot]?.id ?? null) : null
+    if (pressedId) {
       // Quay mặt về điểm ngắm TRƯỚC khi thi triển: chiêu bay theo hướng nhân vật
       this.faceAim(ctx.cursorX, ctx.cursorZ)
-      const result = this.caster.tryCast(slot, this.realm, this.linhLuc, ctx)
+      const result = this.caster.tryCast(pressedId, this.realm, this.linhLuc, ctx)
       if (result.ok) {
         this.linhLuc -= result.cost
         // Thi triển thì bỏ đòn đánh đang ra — không cho vừa chém vừa niệm chú
@@ -575,14 +594,19 @@ export class Player {
   }
 
   /**
-   * Thi triển một ô pháp thuật theo lệnh của mã, không qua bàn phím.
+   * Thi triển một chiêu theo ID, không qua bàn phím.
    *
-   * Có riêng cho chế độ trình diễn. Không giả lập một lần bấm phím vì bàn phím
-   * được đọc trong `fixedUpdate`, còn bộ trình diễn lại chạy TRƯỚC bước đó —
-   * lệnh giả sẽ trôi mất một bước hoặc phát hai lần.
+   * Nhận ID chứ không nhận ô, và đó là điều làm Luyện Kiếm Đài diễn được CẢ
+   * MƯỜI BẢY chiêu: thanh pháp thuật chỉ có mười ô nên bảy chiêu bị chiêu cảnh
+   * giới cao chiếm chỗ, và nếu bộ trình diễn cũng đi qua ô thì bảy chiêu đó
+   * không có đường nào gọi ra được.
+   *
+   * Không giả lập một lần bấm phím vì bàn phím được đọc trong `fixedUpdate`,
+   * còn bộ trình diễn lại chạy TRƯỚC bước đó — lệnh giả sẽ trôi mất một bước
+   * hoặc phát hai lần.
    */
-  castSlot(
-    slot: number,
+  castSkill(
+    id: string,
     world: CombatWorld,
     projectiles: ProjectileSystem,
     swords: SwordStorm,
@@ -599,7 +623,7 @@ export class Player {
       dashDirZ: this.moveDirZ,
     }
     this.faceAim(ctx.cursorX, ctx.cursorZ)
-    const result = this.caster.tryCast(slot, this.realm, this.linhLuc, ctx)
+    const result = this.caster.tryCast(id, this.realm, this.linhLuc, ctx)
     if (!result.ok) return false
     this.linhLuc -= result.cost
     this.phase = 'none'

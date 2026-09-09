@@ -1,9 +1,10 @@
 /**
  * Thang cảnh giới của Phàm Nhân Tu Tiên.
  *
- * Bản demo đi tới Kết Đan. Các đại cảnh giới sau (Nguyên Anh, Hoá Thần...) để
- * dành cho các chương Thiên Nam trở đi — thêm vào cuối mảng là xong, mọi công
- * thức đều tính theo chỉ số nên không phải sửa gì.
+ * Lượt chơi thật đi tới Kết Đan; Nguyên Anh có mặt để bộ pháp thuật kể được
+ * hết con đường của Hàn Lập trong Luyện Kiếm Đài. Các đại cảnh giới sau (Hoá
+ * Thần, Luyện Hư...) thêm vào CUỐI mảng là xong — mọi công thức đều tính theo
+ * chỉ số nên không phải sửa gì.
  */
 
 export interface MajorRealm {
@@ -47,6 +48,25 @@ export const MAJOR_REALMS: readonly MajorRealm[] = [
     tiers: ['sơ kỳ', 'trung kỳ', 'hậu kỳ', 'đại thành'],
     powerBase: 46,
     powerPerTier: 11,
+  },
+  {
+    /**
+     * Nguyên Anh kỳ — cảnh giới của những pháp bảo trứ danh nhất.
+     *
+     * Thêm vào vì bộ pháp thuật cần tới nó, không phải vì lượt chơi cần: Tam
+     * Diễm Phiến, Nguyên Từ Thần Quang, Thiên Nhất Chân Thuỷ và Canh Kim Kiếm
+     * Khí đều là thứ Hàn Lập chỉ dùng được sau khi kết anh, nên gắn chúng vào
+     * Kết Đan là nói sai nguyên tác ngay ở chỗ dễ kiểm nhất.
+     *
+     * `powerBase` gấp bốn Kết Đan, giữ đúng nhịp nhảy của ba mốc trước
+     * (2 → 12 → 46 → 184): mỗi đại cảnh giới là một VỰC, và chính con số này
+     * là thứ `realmGapFactor` dựa vào để nói điều đó.
+     */
+    key: 'nguyenAnh',
+    name: 'Nguyên Anh kỳ',
+    tiers: ['sơ kỳ', 'trung kỳ', 'hậu kỳ', 'đại thành'],
+    powerBase: 184,
+    powerPerTier: 44,
   },
 ]
 
@@ -92,7 +112,20 @@ export const REALM = {
   LUYEN_KHI: 1,
   TRUC_CO: 2,
   KET_DAN: 3,
+  NGUYEN_ANH: 4,
 } as const
+
+/**
+ * Đại cảnh giới cao nhất mà LƯỢT CHƠI THẬT đi tới được.
+ *
+ * Tách khỏi `MAJOR_REALMS.length - 1` vì hai con số này có hai nghĩa khác nhau.
+ * Thang cảnh giới có Nguyên Anh để Luyện Kiếm Đài kể hết bộ pháp thuật của Hàn
+ * Lập; lượt chơi thì chưa có nội dung cho nó. Không tách ra thì Kết Đan đại
+ * thành đột phá thẳng lên Nguyên Anh mà KHÔNG tốn đan dược nào — bảng
+ * `BREAKTHROUGH_PILL` không có mục cho cảnh giới đó, nên `requiredPill()` trả
+ * về rỗng và cửa mở toang. Một đại cảnh giới được tặng không, không có gì báo.
+ */
+export const PLAYABLE_MAJOR_CAP: number = REALM.KET_DAN
 
 export interface RealmPosition {
   /** Chỉ số trong MAJOR_REALMS. */

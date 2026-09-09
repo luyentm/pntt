@@ -17,6 +17,16 @@ export { TUNE } from './tune'
  */
 export class StylizedToggle {
   private atmosphere: StylizedAtmosphere | null = null
+  /**
+   * Vị trí đèn lạnh của lần bật gần nhất.
+   *
+   * Nhớ lại để bật/tắt từ bảng debug không cần biết bố cục sân: `main` bật bộ
+   * này lúc khởi động với các cột đá của màn, và bảng debug chỉ cần gọi
+   * `enable()` là ra đúng cảnh đó.
+   */
+  private lastSpots: ReadonlyArray<{ x: number; y: number; z: number }> | undefined
+  private shadows = true
+  private postFx = true
   private saved: {
     fog: typeof Game.prototype.three.fog
     background: typeof Game.prototype.three.background
@@ -41,6 +51,7 @@ export class StylizedToggle {
 
   enable(coolSpots?: ReadonlyArray<{ x: number; y: number; z: number }>): void {
     if (this.atmosphere) return
+    if (coolSpots) this.lastSpots = coolSpots
     const g = this.game
 
     this.saved = {
@@ -65,11 +76,50 @@ export class StylizedToggle {
     g.sky.mesh.visible = false
 
     this.atmosphere = new StylizedAtmosphere(g.renderer.gl, g.three, g.camera.camera, {
-      coolSpots,
+      coolSpots: this.lastSpots,
     })
     this.atmosphere.attach()
     this.atmosphere.setSize(g.renderer.width, g.renderer.height)
+    this.applyQuality()
     g.renderOverride = (dt) => this.atmosphere?.render(dt)
+  }
+
+  /**
+   * Bóng đổ và hậu xử lý theo bảng Cài đặt.
+   *
+   * Phải nối lại vì bộ này có ĐÈN VÀ CHUỖI PASS RIÊNG: `lighting.shadowsEnabled`
+   * chỉ tắt bóng của nắng mặc định, còn `composer.enabled` thì vô nghĩa khi
+   * `renderOverride` đã thay cả đường vẽ. Không nối thì bật bộ stylized làm hai
+   * công tắc trong Cài đặt im lặng mất tác dụng — kiểu hỏng tệ nhất cho một
+   * công tắc, vì người chơi không có cách nào biết.
+   *
+   * Giữ giá trị ngay cả khi đang tắt, để lần bật sau vẫn đúng cài đặt.
+   */
+  set shadowsEnabled(value: boolean) {
+    this.shadows = value
+    this.applyQuality()
+  }
+
+  get shadowsEnabled(): boolean {
+    return this.shadows
+  }
+
+  set postFxEnabled(value: boolean) {
+    this.postFx = value
+    this.applyQuality()
+  }
+
+  get postFxEnabled(): boolean {
+    return this.postFx
+  }
+
+  private applyQuality(): void {
+    const atmo = this.atmosphere
+    if (!atmo) return
+    atmo.sun.castShadow = this.shadows
+    // Tắt hậu xử lý = tắt BLOOM, không phải bỏ cả chuỗi pass: `OutputPass` mới
+    // là thứ áp tone mapping, bỏ nó thì ảnh ra nhạt sai màu
+    atmo.bloom.enabled = this.postFx
   }
 
   disable(): void {

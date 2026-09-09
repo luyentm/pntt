@@ -7,7 +7,7 @@ import { REALM, type RealmPosition } from '@/game/data/realms'
 import { deriveStats, type BaseStats } from '@/game/Stats'
 import { Combatant, type CombatantView, type Side } from '../Combatant'
 import { CombatWorld } from '../CombatWorld'
-import { SwordStorm, SWORD_COUNT } from '../SwordStorm'
+import { SwordStorm, SWORD_CAPACITY } from '../SwordStorm'
 
 const base: BaseStats = {
   sinhLuc: 4000,
@@ -40,7 +40,15 @@ function makeCombatant(side: Side, x: number, z: number): Combatant {
   return c
 }
 
-const SPEC = { radius: 3, mult: 0.55, duration: 5, knockback: 0, stagger: 0 }
+const SPEC = {
+  radius: 3,
+  mult: 0.55,
+  duration: 5,
+  knockback: 0,
+  stagger: 0,
+  count: 36,
+  hitInterval: 0.3,
+}
 
 describe('SwordStorm — Thanh Trúc Phong Vân Kiếm', () => {
   let world: CombatWorld
@@ -62,8 +70,85 @@ describe('SwordStorm — Thanh Trúc Phong Vân Kiếm', () => {
     }
   }
 
-  it('33 thanh kiếm', () => {
-    expect(SWORD_COUNT).toBe(33)
+  it('bộ đủ là 72 thanh, đúng nguyên tác', () => {
+    expect(SWORD_CAPACITY).toBe(72)
+  })
+
+  it('số kiếm bay ra theo spec, và luôn làm tròn xuống bội của ba', () => {
+    // Ba vòng đồng tâm: số lẻ để lại một vòng thiếu chỗ, và chỗ thiếu đó quay
+    // vòng vòng quanh người thành một khoảng hở — mắt đọc ra là lỗi
+    const me = makeCombatant('player', 0, 0)
+    world.add(me)
+    storm.cast(me, { ...SPEC, count: 12 })
+    expect(storm.swordCount).toBe(12)
+    storm.cast(me, { ...SPEC, count: 25 })
+    expect(storm.swordCount).toBe(24)
+  })
+
+  it('không bao giờ vượt quá sức chứa của InstancedMesh', () => {
+    // Vượt trần thì `setMatrixAt` ghi ra ngoài buffer — three không ném lỗi,
+    // nó chỉ âm thầm bỏ qua, nên đây là dạng hỏng không có gì báo
+    const me = makeCombatant('player', 0, 0)
+    world.add(me)
+    storm.cast(me, { ...SPEC, count: 500 })
+    expect(storm.swordCount).toBeLessThanOrEqual(SWORD_CAPACITY)
+  })
+
+  it('sát thương KHÔNG đổi theo số kiếm', () => {
+    // Số kiếm nói về cảnh giới qua mật độ hình ảnh, không qua sát thương: nhân
+    // nó vào đòn thì Nguyên Anh ăn gấp sáu Kết Đan chỉ vì đội hình dày hơn, và
+    // luật chênh lệch cảnh giới bị đếm hai lần
+    function damageWith(count: number): number {
+      const w = new CombatWorld(bus, new Rng(1))
+      const st = new SwordStorm(new Scene(), w, bus)
+      const me = makeCombatant('player', 0, 0)
+      const foe = makeCombatant('enemy', 1.2, 0)
+      w.add(me)
+      w.add(foe)
+      st.cast(me, { ...SPEC, count })
+      const dt = 1 / 60
+      for (let i = 0; i < Math.round(7 / dt); i++) {
+        w.rebuildIndex()
+        st.fixedUpdate(dt)
+      }
+      return foe.stats.maxSinhLuc - foe.hp
+    }
+    expect(damageWith(72)).toBe(damageWith(12))
+  })
+
+  it('Đại Diễn Quyết làm đàn kiếm đánh mạnh hơn và bay lâu hơn', () => {
+    // Đây là chỗ Đại Diễn Quyết phải hiện ra rõ nhất: trong nguyên tác nó là
+    // công pháp cho phép điều khiển nhiều pháp bảo cùng lúc, và bản mệnh pháp
+    // bảo của Hàn Lập chính là đàn kiếm trúc này.
+    function tongSatThuong(spec: typeof SPEC): { mat: number; keoDai: number } {
+      const w = new CombatWorld(bus, new Rng(1))
+      const st = new SwordStorm(new Scene(), w, bus)
+      const me = makeCombatant('player', 0, 0)
+      const foe = makeCombatant('enemy', 1.2, 0)
+      w.add(me)
+      w.add(foe)
+      st.cast(me, spec)
+      const dt = 1 / 60
+      let keoDai = 0
+      for (let i = 0; i < Math.round(12 / dt); i++) {
+        w.rebuildIndex()
+        st.fixedUpdate(dt)
+        if (st.isActive) keoDai += dt
+      }
+      return { mat: foe.stats.maxSinhLuc - foe.hp, keoDai }
+    }
+
+    const thuong = tongSatThuong(SPEC)
+    const boost = 1.5
+    const daiDien = tongSatThuong({
+      ...SPEC,
+      mult: SPEC.mult * boost,
+      duration: SPEC.duration * boost,
+    })
+
+    expect(daiDien.keoDai).toBeGreaterThan(thuong.keoDai * 1.4)
+    // Mạnh hơn cả do mỗi nhịp nặng hơn, cả do có thêm nhịp — nên hơn hẳn 1.5 lần
+    expect(daiDien.mat).toBeGreaterThan(thuong.mat * 1.5)
   })
 
   it('tự tắt khi hết thời gian', () => {

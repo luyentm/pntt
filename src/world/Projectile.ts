@@ -45,8 +45,19 @@ export interface ProjectileSpec {
   /** Nổ lan khi trúng hoặc hết hạn. */
   readonly explodeRadius?: number
   readonly explodeMult?: number
-  /** Trạng thái áp lên mục tiêu khi trúng. */
-  readonly onHit?: { kind: EffectKind; duration: number; magnitude: number }
+  /**
+   * Trạng thái áp lên mục tiêu khi trúng.
+   *
+   * `magnitudeFromCong` cộng `cong × hệ số này` vào độ mạnh — cùng lý do với
+   * pháp vực: một vết thiêu 4 sát thương mỗi giây cân được ở Luyện Khí thì tới
+   * Kết Đan, khi công đã gấp hai mươi lần, nó không còn nhích nổi thanh máu.
+   */
+  readonly onHit?: {
+    kind: EffectKind
+    duration: number
+    magnitude: number
+    magnitudeFromCong?: number
+  }
   /** Cự ly bay ra trước khi quay về (chỉ dùng cho hoiKiem). */
   readonly outRange?: number
 }
@@ -75,6 +86,18 @@ interface Projectile {
    * dải nối từ chỗ viên trước vừa nổ sang chỗ viên sau vừa bắn.
    */
   serial: number
+}
+
+/**
+ * Độ mạnh trạng thái mà một viên áp lên mục tiêu, đã cộng phần suy theo công.
+ *
+ * Làm tròn vì sát thương theo thời gian hiện lên thành số bay: một con số lẻ
+ * tới ba chữ số thập phân nhấp nháy mỗi giây thì không ai đọc được.
+ */
+function dotOf(spec: ProjectileSpec, owner: Combatant): number {
+  const onHit = spec.onHit
+  if (!onHit) return 0
+  return Math.round(onHit.magnitude + owner.stats.cong * (onHit.magnitudeFromCong ?? 0))
 }
 
 const GROUND_CLEARANCE = 0.55
@@ -326,7 +349,7 @@ export class ProjectileSystem {
     p.owner.stats.element = savedElement
 
     if (result && spec.onHit) {
-      victim.effects.apply(spec.onHit.kind, spec.onHit.duration, spec.onHit.magnitude, p.owner.id)
+      victim.effects.apply(spec.onHit.kind, spec.onHit.duration, dotOf(spec, p.owner), p.owner.id)
     }
   }
 
@@ -355,7 +378,7 @@ export class ProjectileSystem {
           stagger: spec.stagger,
         })
         if (spec.onHit) {
-          victim.effects.apply(spec.onHit.kind, spec.onHit.duration, spec.onHit.magnitude, p.owner.id)
+          victim.effects.apply(spec.onHit.kind, spec.onHit.duration, dotOf(spec, p.owner), p.owner.id)
         }
       }
       p.owner.stats.element = savedElement

@@ -1,8 +1,58 @@
-import { SHOWCASE, type ShowcaseStep } from '@/game/data/showcase'
+import { realmName } from '@/game/data/realms'
+import {
+  SHOWCASE,
+  showcaseChapters,
+  stepSkill,
+  stepTitle,
+  type ShowcaseStep,
+} from '@/game/data/showcase'
+import {
+  DAMAGE_BAND_LABEL,
+  PHAP_BAO_RANK_LABEL,
+  SKILL_ROLE_LABEL,
+  skillDamage,
+  type SkillDef,
+} from '@/game/data/skills'
+
+/** Thoát ký tự cho nội dung do dữ liệu cấp trước khi ghép vào innerHTML. */
+function esc(text: string): string {
+  return text.replace(/[&<>"]/g, (c) =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
+  )
+}
 
 /**
- * Lớp phủ của chế độ trình diễn: tên chiêu đang diễn, chú thích, và danh sách
- * cả kịch bản với bước hiện tại được đánh dấu.
+ * Một dòng số liệu sát thương đọc được bằng lời.
+ *
+ * Nói bằng HỆ SỐ CÔNG chứ không bằng con số tuyệt đối, vì sát thương thật còn
+ * đi qua phòng ngự, ngũ hành và chênh lệch cảnh giới — một con số tuyệt đối chỉ
+ * đúng với đúng một cặp đánh nhau, và sẽ nói dối ở mọi cặp còn lại.
+ */
+function damageLine(def: SkillDef): string {
+  const d = skillDamage(def)
+  if (d.tong <= 0) return 'Không gây sát thương'
+
+  const parts: string[] = []
+  if (d.soDon > 1) parts.push(`${d.moiDon.toFixed(2)}× công × ${d.soDon} đòn`)
+  else parts.push(`${d.moiDon.toFixed(2)}× công`)
+  if (d.theoThoiGian > 0) parts.push(`+${d.theoThoiGian.toFixed(2)}× theo thời gian`)
+
+  const scope = d.soMucTieu === 0 ? 'diện rộng' : `tối đa ${d.soMucTieu} mục tiêu`
+  return `${parts.join(' ')} = tổng ${d.tong.toFixed(2)}× · ${scope}`
+}
+
+/**
+ * Lớp phủ của Luyện Kiếm Đài: thẻ giới thiệu chiêu đang diễn, và danh sách cả
+ * kịch bản chia theo cảnh giới với bước hiện tại được đánh dấu.
+ *
+ * Thẻ nói bốn thứ, theo đúng thứ tự người xem cần: TÊN chiêu, THI TRIỂN BẰNG GÌ
+ * (pháp bảo và hạng của nó), MẠNH CỠ NÀO (bậc sát thương và con số suy ra nó),
+ * rồi mới tới chú thích về cách xem. Thiếu hai cái giữa thì mọi chiêu đọc ra
+ * như nhau — mà trong Phàm Nhân, khoảng cách giữa một lá phù mua ngoài chợ và
+ * một bản mệnh pháp bảo luyện hai mươi mốt năm mới là nội dung thật.
+ *
+ * Mọi con số trên thẻ đều SUY từ bảng pháp thuật, không gõ tay ở đây: chỉnh cân
+ * bằng một hệ số là thẻ đổi theo, thay vì âm thầm nói sai.
  *
  * Danh sách hiện HẾT chứ không chỉ bước đang diễn: người vào đây để xem Hàn Lập
  * có những gì, nên họ phải thấy được toàn bộ ngay từ đầu và nhảy tới cái mình
@@ -10,8 +60,7 @@ import { SHOWCASE, type ShowcaseStep } from '@/game/data/showcase'
  */
 export class ShowcasePanel {
   private readonly root: HTMLDivElement
-  private readonly title: HTMLDivElement
-  private readonly note: HTMLDivElement
+  private readonly card: HTMLDivElement
   private readonly counter: HTMLSpanElement
   private readonly state: HTMLSpanElement
   private readonly list: HTMLDivElement
@@ -31,30 +80,47 @@ export class ShowcasePanel {
           <span data-role="counter"></span>
           <span data-role="state"></span>
         </div>
-        <div class="showcase-title" data-role="title"></div>
-        <div class="showcase-note" data-role="note"></div>
+        <div data-role="card"></div>
         <div class="showcase-keys">
           <b>P</b> tự chạy / tự chơi · <b>Q</b> <b>E</b> đổi chiêu ·
-          <b>1…7</b> thi triển · <b>Space</b> ngự kiếm · <b>Esc</b> về menu
+          <b>1…0</b> thi triển · <b>Space</b> ngự kiếm · <b>Esc</b> về menu
         </div>
       </div>
     `
     container.appendChild(this.root)
-    this.title = this.pick('title')
-    this.note = this.pick('note')
+    this.card = this.pick('card')
     this.counter = this.pick('counter')
     this.state = this.pick('state')
     this.list = this.pick('list')
+    this.buildList()
+  }
 
-    SHOWCASE.forEach((step, i) => {
-      const row = document.createElement('button')
-      row.type = 'button'
-      row.className = 'showcase-row'
-      row.textContent = step.title
-      row.addEventListener('click', () => this.onPick?.(i))
-      this.list.appendChild(row)
-      this.rows.push(row)
-    })
+  /**
+   * Danh sách chia theo chương.
+   *
+   * Có tiêu đề chương chứ không phải một cột 22 dòng phẳng: cột phẳng thì người
+   * xem không đọc ra được rằng bộ pháp thuật này ĐI THEO MỘT CON ĐƯỜNG, mà đó
+   * chính là điều đáng nói nhất về nó.
+   */
+  private buildList(): void {
+    for (const chapter of showcaseChapters()) {
+      const head = document.createElement('div')
+      head.className = 'showcase-chapter'
+      head.textContent = chapter.title
+      this.list.appendChild(head)
+
+      for (let i = chapter.from; i <= chapter.to; i++) {
+        const step = SHOWCASE[i] as ShowcaseStep
+        const row = document.createElement('button')
+        row.type = 'button'
+        row.className = 'showcase-row'
+        const def = stepSkill(step)
+        row.innerHTML = `<b>${esc(def?.glyph ?? '·')}</b><span>${esc(stepTitle(step))}</span>`
+        row.addEventListener('click', () => this.onPick?.(i))
+        this.list.appendChild(row)
+        this.rows[i] = row
+      }
+    }
   }
 
   private pick<T extends HTMLElement>(role: string): T {
@@ -76,18 +142,62 @@ export class ShowcasePanel {
   }
 
   setStep(step: ShowcaseStep, index: number, total: number): void {
-    this.title.textContent = step.title
-    this.note.textContent = step.note
+    this.card.innerHTML = this.cardHtml(step)
     this.counter.textContent = `${index + 1} / ${total}`
     if (index !== this.active) {
       if (this.active >= 0) this.rows[this.active]?.classList.remove('is-active')
       this.active = index
-      this.rows[index]?.classList.add('is-active')
+      const row = this.rows[index]
+      row?.classList.add('is-active')
+      row?.scrollIntoView({ block: 'nearest' })
       // Nháy thẻ một nhịp khi đổi bước — mắt đang ở nhân vật, không ở chữ
       this.root.classList.remove('is-changing')
       void this.root.offsetWidth
       this.root.classList.add('is-changing')
     }
+  }
+
+  private cardHtml(step: ShowcaseStep): string {
+    const def = stepSkill(step)
+    const title = `<div class="showcase-title">${esc(stepTitle(step))}</div>`
+
+    if (!def) {
+      // Ba bước không phải pháp thuật (combo, phi hành, toạ thiền, đột phá) chỉ
+      // có tên và chú thích — dựng một thẻ số liệu rỗng cho chúng thì mỗi ô đều
+      // ghi "—", và một hàng gạch ngang không nói gì cả
+      return `
+        ${title}
+        <div class="showcase-realm">${esc(realmName(step.realm))}</div>
+        <div class="showcase-note">${esc(step.note)}</div>`
+    }
+
+    const dmg = skillDamage(def)
+    return `
+      ${title}
+      <div class="showcase-han">${esc(def.hanTu)} · ${esc(realmName(def.requiredRealm))}${
+        def.banMenh ? ' · bản mệnh' : ''
+      }</div>
+      <div class="showcase-facts">
+        <div class="showcase-fact">
+          <i>Pháp bảo</i>
+          <b>${esc(def.phapBao.ten)}</b>
+          <u>${esc(PHAP_BAO_RANK_LABEL[def.phapBao.hang])}</u>
+        </div>
+        <div class="showcase-fact">
+          <i>Sát thương</i>
+          <b class="is-band-${def.action.type === 'hoTro' ? 'khong' : dmg.bac}">${esc(
+            DAMAGE_BAND_LABEL[dmg.bac],
+          )}</b>
+          <u>${esc(damageLine(def))}</u>
+        </div>
+        <div class="showcase-fact">
+          <i>Vai trò</i>
+          <b>${esc(SKILL_ROLE_LABEL[def.role])}</b>
+          <u>${def.linhLucCost} linh lực · hồi ${def.cooldown}s · dẫn khí ${def.castTime}s</u>
+        </div>
+      </div>
+      <div class="showcase-lore">${esc(def.phapBao.note)} ${esc(def.nguonGoc)}</div>
+      <div class="showcase-note">${esc(step.note)}</div>`
   }
 
   setPlaying(playing: boolean): void {

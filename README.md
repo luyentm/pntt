@@ -66,7 +66,8 @@ hình không phản hồi.
 | Chuột trái (hoặc `J`) | Chém — bấm liên tiếp để nối combo 3 nhát. Giữ để chém liên tục |
 | — | **Tự ngắm bật mặc định**: đòn đánh và pháp thuật tự nhắm con quái có vòng vàng dưới chân. Tắt trong *Cài đặt* để ngắm bằng chuột |
 | Giữ Shift | Đi chậm |
-| `1`–`7` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù · 竹 Thanh Trúc Phong Vân Kiếm |
+| `1`–`9`, `0` | Pháp thuật: 劍 Ngự Kiếm · 風 Phong Độn · 火 Hoả Cầu · 盾 Kim Quang Thuẫn · 雷 Thiên Lôi Phù · 冰 Băng Phong Phù · 竹 Thanh Trúc Phong Vân Kiếm · 嫁 Giá Y Thần Công · 蟲 Thực Kim Trùng · 衍 Đại Diễn Quyết |
+| — | `0` là ô THỨ MƯỜI, không phải ô số không: nó nằm ngay sau `9` nên hàng số đọc ra là 1…0 |
 | Giữ `F` | Toạ thiền — tăng Tu Vi chậm và đều. Tự thoát khi di chuyển hoặc bị đánh |
 | `G` | Uống hết Tiểu Bình linh nhũ để lấy Tu Vi |
 | `B` | Đột phá đại cảnh giới (vào màn thử dẫn khí) |
@@ -203,6 +204,13 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thành một vành tròn trông như bờ cao nguyên nhân tạo.
 - Mái kiến trúc phải là **hai tấm dốc chụm sống nóc**; một hộp phẳng nằm ngang đọc
   ra là "tấm ván xanh" chứ không phải mái.
+- **`scene.fog` không phải chỗ đáng tin để đọc lại.** Bộ stylized thay nó bằng `FogExp2`
+  (mật độ, không có `near`/`far`), nên nhóm "Ánh sáng" của bảng debug — đọc
+  `(scene.fog as { near: number }).near` — nhận `undefined` ngay khi bộ đó bật sẵn lúc
+  khởi động, `gui.add` trả về `undefined` và cả `main` chết ở dòng `.name(...)`: màn hình
+  đứng ở "Đang khai mở linh khí…". Ai cần sương của bộ mặc định thì phải giữ tham chiếu
+  tới chính đối tượng đó (`sky.fog`). Cùng lý do, `Sky.setColors` ghi màu vào `sky.fog`
+  chứ không vào `scene.fog` — ghi vào `scene.fog` là đè mất màu sương của bộ stylized.
 
 ### Hiệu năng
 
@@ -411,15 +419,31 @@ hiệu ứng bị lỗi chứ không phải là ngẫu nhiên.
 
 **Bảng màu ngũ hành đi theo CẶP** (`ELEMENT_TRAIL`): kim `#FFF3C0→#D99B2C`, mộc
 `#DCF46E→#2F9E55`, thuỷ `#D8F6FF→#2F7FD6`, hoả `#FFD45E→#D8341A`, thổ `#F4CC86→#8A5524`,
-cộng hai cặp riêng cho sấm (`#EAF7FF→#6F9FFF`) và ma đạo (`#D94A52→#3A2740`). Đổi một màu
+cộng ba cặp riêng cho sấm (`#EAF7FF→#6F9FFF`), ma đạo (`#D94A52→#3A2740`) và phong lam
+(`#9FF3FF→#2445C8`). Đổi một màu
 thì bảy chiêu vẫn là một chiêu bảy màu; đổi cả cặp thì mỗi chiêu có một đường chuyển màu
 riêng, và đó là thứ đọc được cả khi vệt chỉ hiện hai phần mười giây. Đầu vệt của hệ nào
 cũng sáng và ngả vàng/trắng: đầu vệt là chỗ vừa xảy ra lực, và mắt đọc "sáng gắt" thành
 "mạnh" — để đầu vệt đúng màu hệ thì hoả cầu ra một vệt đỏ đều tay, nhìn như dải sơn.
 
-Sấm và cú giộng của boss dùng cặp RIÊNG chứ không lấy theo ngũ hành: cả hai đều là `kim`,
-nên lấy theo hệ thì tia sét ra màu vàng đồng và đòn của Mặc Đại Phu trông như một chiêu
-kim quang chính đạo.
+Ba chiêu dùng cặp RIÊNG chứ không lấy theo ngũ hành, tra qua bảng `SKILL_TRAIL` (id chiêu
+→ cặp màu, tra trước ngũ hành). Sấm và cú giộng của boss đều là hệ `kim`, nên lấy theo hệ
+thì tia sét ra màu vàng đồng và đòn của Mặc Đại Phu trông như một chiêu kim quang chính
+đạo. Phong Độn Thuật là `vo` nên nó rơi vào cặp chủ đạo — mà cú lướt và cú chạy bộ đi cùng
+một đường thẳng ngang mặt đất, cùng màu nữa thì chiêu đọc ra là "chạy nhanh một nhịp";
+cặp **phong lam** cho nó một dải xanh riêng.
+
+Cặp phong lam khác hai cặp lam đã có ở KHOẢNG chuyển màu, không ở sắc: thuỷ và sấm đều bắt
+đầu gần như trắng nên nhìn nhanh thì chúng chỉ khác nhau ở độ đậm của đuôi; phong lam bắt
+đầu ở lam ngọc rõ màu rồi chìm xuống lam sâu, nên nó đọc ra là một dải xanh thật chứ không
+phải một vệt trắng hơi ngả xanh.
+
+Gom vào một bảng thay vì rải `if (id === …)` ở từng chỗ nghe sự kiện, và việc đó lộ ra một
+lỗi đã có: `skill:area` có ngoại lệ cho sấm mà `skill:cast` thì không, nên đoạn TỤ KHÍ của
+Thiên Lôi Phù bốc lên màu vàng đồng rồi tia sét mới đánh xuống màu lam điện — đoạn dẫn khí
+nói sai về chiêu đang tới. Vệt quạt của cú lướt thì lấy lam giữa `Palette.thuy`, vì tấm
+quạt chỉ có MỘT màu: đầu cặp gần như trắng (tan vào nền trời) và đuôi cặp thì thẫm (tan vào
+bóng cỏ), chỉ dải ribbon có chuyển màu mới dùng được cả hai đầu.
 
 **Chi phí, đo được ở khoảnh khắc nặng nhất** (33 kiếm trúc + vệt chạy + hai vụ nổ + một
 pháp vực, 96 vệt cùng sống): **+10 draw call và +6672 tam giác** trên tổng 96 nghìn, cho cả
@@ -467,12 +491,49 @@ Bài học chung với chuyện "vệt teo về một điểm" ở trên: **vớ
 không chứng minh được gì cả.** Ba lần trong đợt này tôi có đủ số liệu nói "nó đang chạy" và
 cả ba lần màn hình trống. Cách duy nhất là chụp ảnh và nhìn.
 
+### Ba chiêu đặc trưng của Hàn Lập
+
+Ngoài đàn kiếm trúc, ba thứ gắn với Hàn Lập nhất trong nguyên tác — và mỗi chiêu cố tình
+là một VERB khác nhau, không phải thêm một nút gây sát thương nữa:
+
+| Chiêu | Cảnh giới | Verb |
+|---|---|---|
+| 嫁 **Giá Y Thần Công** | hậu kỳ Luyện Khí | Đổi tài nguyên: đốt 18% sinh lực tối đa, cộng 60% sát thương trong 8 giây |
+| 蟲 **Thực Kim Trùng** | Trúc Cơ | Sát thương theo thời gian: đòn đầu nhẹ, gặm 6 giây trên vùng rộng 3,4 |
+| 衍 **Đại Diễn Quyết** | Kết Đan | Nhân chiêu khác: khiên và đàn kiếm mạnh + lâu thêm 50% trong 12 giây |
+
+Ba chỗ đặt tay vào hệ thống, mỗi chỗ chọn có lý do:
+
+- **Giá Y Thần Công nhân ở `CombatWorld.strike`**, không trong `computeDamage`. Trong
+  nguyên tác nó là sức mạnh của cả NGƯỜI, nên phải ăn vào nhát kiếm, pháp vực, phi kiếm và
+  đàn kiếm như nhau — mà `strike` là cửa duy nhất cả bốn đều đi qua. Nhét vào công thức sát
+  thương thì `computeDamage` phải biết tới hệ trạng thái, và nó đang là một hàm thuần.
+- **Đại Diễn Quyết nhân ở `SkillCaster`**, chỗ pháp thuật được DỰNG RA (độ mạnh khiên, sát
+  thương và thời gian đàn kiếm) — không nhân vào sát thương mỗi đòn, vì làm thế là nó trùng
+  vai với Giá Y Thần Công và hai chiêu mất hết khác biệt. Không tăng bán kính vòng kiếm:
+  vòng rộng ra thì 33 thanh rải mỏng và người chơi mất khả năng lái nó bằng cách đi bộ.
+- **Độ mạnh của chiêu hỗ trợ có HAI đường ra.** Khiên là một LƯỢNG nên suy từ Thần Thức và
+  tự lên theo cảnh giới; Giá Y và Đại Diễn là một TỈ LỆ nên phải là số cố định — suy tỉ lệ
+  từ Thần Thức thì tới Kết Đan nó thành cộng vài nghìn phần trăm. Ngược lại, sát thương theo
+  thời gian của Thực Kim Trùng thì PHẢI suy theo công (`magnitudeFromCong`): một hằng số cân
+  được ở Trúc Cơ thì tới Kết Đan không nhích nổi thanh máu.
+
+Ba thứ nhỏ phải sửa kèm, đều là dạng lỗi im lặng nếu bỏ qua:
+
+- `Input.skillPressed()` quét thêm `Digit9` và `Digit0`; trước đó nó dừng ở `Digit8` nên hai
+  chiêu cuối có ô trên thanh mà không có phím nào gọi được.
+- Chữ bay lên của chiêu hỗ trợ hiện `⛨ 1870` cho khiên nhưng `+60%` cho hai chiêu tỉ lệ —
+  cùng một trường `magnitude` mà đọc ra hai nghĩa khác nhau, và "⛨ 0.6" thì không nói gì cả.
+- Chế độ trình diễn phải **bù sinh lực mỗi bước**, không chỉ linh lực: showreel diễn Giá Y
+  Thần Công mỗi vòng, mỗi lần đốt 18% máu, nên sau vài vòng thanh máu cạn tới đáy và người
+  xem đọc ra là nhân vật đang chết dở.
+
 ### Chế độ trình diễn thần thông
 
 Chọn từ menu chính (*Xem thần thông*). Mở hết cảnh giới Kết Đan nên cả 7 pháp thuật,
 ngự kiếm phi hành và 33 kiếm trúc đều dùng được ngay.
 
-- **Showreel tự chạy** đi qua 11 mục — combo cận chiến, 7 pháp thuật, phi hành, toạ
+- **Showreel tự chạy** đi qua 14 mục — combo cận chiến, 10 pháp thuật, phi hành, toạ
   thiền, đột phá — kèm tên và chú thích cho từng thứ. `P` đổi giữa tự chạy và tự chơi,
   `Q`/`E` lật mục, hoặc bấm thẳng vào danh sách bên trái.
 - Danh sách hiện **hết** kịch bản chứ không chỉ mục đang diễn: người vào đây để xem Hàn
@@ -488,10 +549,13 @@ ngự kiếm phi hành và 33 kiếm trúc đều dùng được ngay.
   ra `localStorage`, và "Lưu và về menu" trong lúc trình diễn cũng không ghi — ghi cảnh
   giới Kết Đan của chế độ xem vào bản lưu sẽ xoá sạch tiến độ thật. Đã kiểm cả vòng:
   lưu → vào trình diễn → về menu → Tiếp tục, ra đúng tiến độ cũ.
-- `freeCast` bỏ giá linh lực nhưng **giữ hồi chiêu**: hồi chiêu là thứ giữ nhịp cho
-  showreel, bỏ nó thì mỗi mục thành một tràng chiêu chồng lên nhau. Bộ trình diễn tự xoá
-  hồi chiêu của ĐÚNG ô nó cần, nên Thanh Trúc Phong Vân Kiếm (hồi 22 giây) vẫn diễn được
-  trong một mục 9 giây.
+- `freeCast` bỏ giá linh lực và `noCooldown` **bỏ hẳn hồi chiêu**. Chế độ này để XEM
+  chiêu, nên chờ hồi 22 giây của Thanh Trúc Phong Vân Kiếm là chờ vô nghĩa — cùng lý do
+  mà linh lực ở đây luôn đầy. Ban đầu tôi giữ hồi chiêu vì sợ chiêu chồng lên nhau, và
+  cho bộ trình diễn tự xoá hồi chiêu của đúng ô nó cần; nhưng thứ chặn chiêu chồng nhau
+  là cổng `phase !== 'none'` (còn dẫn khí hoặc thu thế thì không nhận chiêu mới), còn nhịp
+  của showreel thì do `repeatEvery` trong bảng trình diễn quyết định — chưa bao giờ do hồi
+  chiêu. Giữ nó chỉ phạt đúng một người: người tự bấm 1…7 để xem lại một chiêu.
 - Bộ điều phối phải **tắt trạng thái kéo dài khi rời mục**: bay và toạ thiền là bật/tắt
   chứ không phải một cú nổ, không tắt thì nhân vật vẫn lơ lửng trong lúc showreel đã
   sang mục khác.
@@ -561,10 +625,22 @@ debug, không tính ra — khoảng dùng được hẹp hơn tôi tưởng.
 
 ### Bộ ánh sáng stylized/fantasy
 
-`src/render/stylized/` là một bộ ánh sáng + sương mù + hậu kỳ **thứ hai**, độc lập với bộ
-mặc định, bật/tắt được lúc chạy qua nhóm "Stylized / fantasy" của bảng debug (hoặc
-`window.__pntt.stylized`). Ba tệp: `tune.ts` (mọi con số, kèm HEX và khoảng dùng được),
+`src/render/stylized/` là một bộ ánh sáng + sương mù + hậu kỳ độc lập với bộ ban đầu, và
+là bộ **đang bật mặc định** — `main` bật nó ngay sau khi nạp màn, tắt được lúc chạy qua
+nhóm "Stylized / fantasy" của bảng debug (hoặc `window.__pntt.stylized`) để so sánh A/B
+trên cùng một cảnh. Ba tệp: `tune.ts` (mọi con số, kèm HEX và khoảng dùng được),
 `StylizedAtmosphere.ts` (dựng và cập nhật), `index.ts` (công tắc A/B).
+
+Vị trí bốn đèn lạnh do **màn** cấp (`ArenaScene.coolSpots`), không phải bảng debug: màn
+mới là nơi biết bốn cột đá đứng đâu, và công tắc nhớ lại vị trí của lần bật đầu để bật/tắt
+sau đó không cần biết gì về bố cục sân.
+
+Bật mặc định thì phải **nối lại hai công tắc trong bảng Cài đặt**: bộ này có đèn và chuỗi
+pass riêng, nên `lighting.shadowsEnabled` chỉ tắt bóng của nắng cũ và `composer.enabled`
+thì vô nghĩa khi `renderOverride` đã thay cả đường vẽ — không nối thì "Đổ bóng" và "Hậu xử
+lý" im lặng mất tác dụng, kiểu hỏng tệ nhất cho một công tắc vì người chơi không có cách
+nào biết. "Hậu xử lý: tắt" ở đây nghĩa là tắt BLOOM chứ không bỏ cả chuỗi pass: `OutputPass`
+mới là thứ áp tone mapping, bỏ nó thì ảnh ra nhạt sai màu.
 
 Tông màu: **vàng cam là nắng**, **lam là bóng đổ và sương**, **đỏ cam là điểm nhấn quanh
 nhân vật**. Điểm cần hiểu trước tiên là **bóng đổ không có màu riêng** — không có tham số

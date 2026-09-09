@@ -13,11 +13,20 @@ import { materials } from '@/render/Materials'
 import { isHostile, type Combatant } from './Combatant'
 import type { CombatWorld } from './CombatWorld'
 
-/** Số kiếm — 33 thanh, đúng như trong truyện. */
-export const SWORD_COUNT = 33
-/** Ba vòng, mỗi vòng 11 thanh: 33 = 3 × 11. */
+/**
+ * Sức chứa của đàn kiếm — bộ ĐỦ là 72 thanh, đúng nguyên tác.
+ *
+ * Đây là sức chứa của InstancedMesh, KHÔNG phải số kiếm bay ra: số bay ra do
+ * cảnh giới quyết định (xem `soKiemTruc` trong bảng pháp thuật) vì trong truyện
+ * Hàn Lập Kết Đan sơ kỳ chỉ ngự nổi sáu bảy thanh, hậu kỳ hai bốn thanh, phải
+ * tới Nguyên Anh mới điều được cả bộ. Cấp phát theo mức trần một lần rồi chỉ
+ * đổi `mesh.count` là đổi số kiếm mà không tốn thêm draw call nào.
+ */
+export const SWORD_CAPACITY = 72
+/** Một bộ cơ sở của pháp bảo này là 12 thanh — mọi mốc đều là bội của nó. */
+export const SWORD_SET = 12
+/** Ba vòng đồng tâm, quay ngược nhau. Mọi mốc số kiếm đều chia hết cho 3. */
 const RINGS = 3
-const PER_RING = SWORD_COUNT / RINGS
 /**
  * Độ nghiêng của lưỡi kiếm quanh trục bay, radian.
  *
@@ -31,8 +40,6 @@ const BANK = 1.2
 const GATHER = 0.5
 /** Thời gian đàn kiếm bung từ chỗ tụ ra bán kính vòng. */
 const EXPAND = 0.55
-/** Khoảng cách giữa hai lần gây sát thương cho cùng một mục tiêu. */
-const HIT_INTERVAL = 0.3
 /** Lưỡi kiếm với ra ngoài vòng bay bấy nhiêu. */
 const BLADE_REACH = 0.7
 /**
@@ -54,6 +61,10 @@ export interface SwordStormSpec {
   duration: number
   knockback: number
   stagger: number
+  /** Số thanh bay ra lượt này. Kẹp về `SWORD_CAPACITY`, làm tròn xuống bội của 3. */
+  count: number
+  /** Khoảng cách giữa hai lần một mục tiêu bị cùng đàn kiếm chém. */
+  hitInterval: number
 }
 
 interface Target {
@@ -62,19 +73,22 @@ interface Target {
 }
 
 /**
- * Thanh Trúc Phong Vân Kiếm — chiêu biểu tượng của Hàn Lập, mở ở Kết Đan.
+ * Thanh Trúc Phong Vân Kiếm — bản mệnh pháp bảo của Hàn Lập, mở ở Kết Đan.
  *
- * 33 thanh kiếm trúc bay vây quanh người thi triển rồi loang ra thành vòng quét.
+ * Đàn kiếm trúc bay vây quanh người thi triển rồi loang ra thành vòng quét.
+ * SỐ KIẾM không cố định: nó chính là thứ nói lên cảnh giới — xem `SWORD_CAPACITY`.
  *
- * Nằm trong MỘT InstancedMesh: 33 thanh kiếm là 33 draw call nếu làm rời, mà
+ * Nằm trong MỘT InstancedMesh: 72 thanh kiếm là 72 draw call nếu làm rời, mà
  * chiêu này còn phải phát được giữa lúc đại chiến ở M7. Vòng quay tính bằng
- * lượng giác trên CPU cho mỗi instance — 33 phép tính mỗi frame là không đáng kể
+ * lượng giác trên CPU cho mỗi instance — 72 phép tính mỗi frame là không đáng kể
  * so với việc phải viết shader riêng.
  *
- * Sát thương KHÔNG theo từng thanh kiếm mà theo VÒNG QUÉT, có nhịp HIT_INTERVAL
- * cho mỗi mục tiêu. Nếu tính theo từng thanh thì một con quái đứng đúng chỗ sẽ
- * ăn 33 đòn trong một frame và chết tức khắc bất kể cảnh giới — phá vỡ luật
- * chênh lệch cảnh giới, thứ quan trọng nhất của cả hệ chiến đấu.
+ * Sát thương KHÔNG theo từng thanh kiếm mà theo VÒNG QUÉT, có nhịp
+ * `spec.hitInterval` cho mỗi mục tiêu. Nếu tính theo từng thanh thì một con quái
+ * đứng đúng chỗ sẽ ăn 72 đòn trong một frame và chết tức khắc bất kể cảnh giới
+ * — phá vỡ luật chênh lệch cảnh giới, thứ quan trọng nhất của cả hệ chiến đấu.
+ * Cùng lý do đó, số kiếm KHÔNG được nhân vào sát thương: nó đổi mật độ hình ảnh
+ * và bề rộng đội hình, còn sức mạnh đã nằm ở `mult` và ở cảnh giới rồi.
  */
 export class SwordStorm {
   readonly group = new Group()
@@ -91,7 +105,17 @@ export class SwordStorm {
 
   private active = false
   private age = 0
-  private spec: SwordStormSpec = { radius: 6, mult: 1, duration: 5, knockback: 0, stagger: 0 }
+  private spec: SwordStormSpec = {
+    radius: 6,
+    mult: 1,
+    duration: 5,
+    knockback: 0,
+    stagger: 0,
+    count: SWORD_CAPACITY,
+    hitInterval: 0.3,
+  }
+  /** Số kiếm THẬT của lượt này, đã kẹp và làm tròn về bội của ba. */
+  private count = SWORD_CAPACITY
   private owner: Combatant | null = null
   private readonly targets: Target[] = []
   private readonly buffer: Combatant[] = []
@@ -107,7 +131,7 @@ export class SwordStorm {
     this.mesh = new InstancedMesh(
       bambooSwordGeometry(),
       materials.flat(0xffffff, { vertexColors: true }),
-      SWORD_COUNT,
+      SWORD_CAPACITY,
     )
     this.mesh.instanceMatrix.setUsage(35048) // DynamicDrawUsage
     this.mesh.frustumCulled = false
@@ -139,7 +163,7 @@ export class SwordStorm {
    *
    * Phải gọi cả khi LÀM MỚI, không chỉ khi tan: phát lại lúc đang chạy thì đàn
    * kiếm nhảy về bán kính tụ, và vệt đang bám sẽ vẽ một vệt thẳng từ vành vòng
-   * cũ về sát người — 33 nan hoa bắn vào tâm, không giống gì đàn kiếm đang bay.
+   * cũ về sát người — một bó nan hoa bắn vào tâm, không giống đàn kiếm đang bay.
    */
   onSwordsEnd?: () => void
 
@@ -152,16 +176,27 @@ export class SwordStorm {
     this.fxTimer = 0
     this.owner = owner
     this.spec = spec
+    // Làm tròn XUỐNG bội của ba vì đội hình là ba vòng đều: một con số lẻ để lại
+    // một vòng thiếu chỗ, và chỗ thiếu đó quay quanh người thành một khoảng hở
+    // chạy vòng vòng — mắt đọc ra là lỗi chứ không phải đội hình
+    const wanted = Math.max(RINGS, Math.min(SWORD_CAPACITY, Math.floor(spec.count)))
+    this.count = wanted - (wanted % RINGS)
+    this.mesh.count = this.count
     this.targets.length = 0
     this.mesh.visible = true
+  }
+
+  /** Số kiếm đang bay lượt này — test và VFX đọc để biết bao nhiêu vệt là đủ. */
+  get swordCount(): number {
+    return this.count
   }
 
   /**
    * Bán kính đàn kiếm đang bay.
    *
    * Bung từ chỗ tụ ra bán kính vòng rồi GIỮ, không loang ra mãi. Thử cho loang
-   * ra tới 7 unit trước: 33 thanh kiếm rải trên một vòng lớn nhìn ra là một đống
-   * que bay tản mát, và người chơi không còn điều khiển được gì. Giữ vòng chặt
+   * ra tới 7 unit trước: đàn kiếm rải trên một vòng lớn nhìn ra là một đống que
+   * bay tản mát, và người chơi không còn điều khiển được gì. Giữ vòng chặt
    * thì đàn kiếm đặc, đọc ra là một khối vũ khí — và quan trọng hơn: người chơi
    * LÁI được nó bằng cách đi bộ, nên chiêu thành ra có kỹ năng chứ không phải
    * một nút gây sát thương.
@@ -196,7 +231,7 @@ export class SwordStorm {
     // đàn kiếm đang chém liên tục, còn hình ảnh thưa hơn nhiều. Đếm cả hai Ở
     // ĐÂY vì đây là chỗ duy nhất có `dt` thật — trừ theo hằng số trong
     // `strikeRing` sẽ sai đơn vị, vì hàm đó được gọi mỗi 0,1 giây chứ không mỗi
-    // `HIT_INTERVAL`.
+    // `spec.hitInterval`.
     this.fxTimer -= dt
     this.hitTimer -= dt
     if (this.hitTimer > 0) return
@@ -242,9 +277,9 @@ export class SwordStorm {
       const entry = this.targets.find((t) => t.combatant === victim)
       if (entry) {
         if (entry.cooldown > 0) continue
-        entry.cooldown = HIT_INTERVAL
+        entry.cooldown = this.spec.hitInterval
       } else {
-        this.targets.push({ combatant: victim, cooldown: HIT_INTERVAL })
+        this.targets.push({ combatant: victim, cooldown: this.spec.hitInterval })
       }
       struck++
       // Bỏ miễn thương do đòn trước để nhịp quét của chiêu này quyết định,
@@ -259,7 +294,7 @@ export class SwordStorm {
     return struck
   }
 
-  /** Nhịp frame: chỉ xoay 33 ma trận, không có luật chơi ở đây. */
+  /** Nhịp frame: chỉ xoay ma trận của đàn kiếm, không có luật chơi ở đây. */
   render(_frameDt: number): void {
     if (!this.active || !this.owner) return
     const owner = this.owner
@@ -267,16 +302,17 @@ export class SwordStorm {
     const fade = Math.min(1, this.age / 0.18)
     const spin = this.age * 2.6
 
-    for (let i = 0; i < SWORD_COUNT; i++) {
+    const perRing = this.count / RINGS
+    for (let i = 0; i < this.count; i++) {
       // Ba vòng ĐỀU, hai vòng ngoài quay ngược vòng giữa.
-      // Rải 33 thanh tự do thì nhìn ra là một đống que bay lộn xộn; chia thành
-      // vòng đều và cho quay ngược nhau thì đọc ra ngay là một ĐỘI HÌNH — đây
-      // là bản mệnh pháp khí do người tu điều khiển, không phải mảnh vỡ.
-      const ring = Math.floor(i / PER_RING)
-      const seat = i % PER_RING
+      // Rải kiếm tự do thì nhìn ra là một đống que bay lộn xộn; chia thành vòng
+      // đều và cho quay ngược nhau thì đọc ra ngay là một ĐỘI HÌNH — đây là bản
+      // mệnh pháp bảo do người tu điều khiển, không phải mảnh vỡ.
+      const ring = Math.floor(i / perRing)
+      const seat = i % perRing
       const dir = ring === 1 ? -1 : 1
       const angle =
-        (seat / PER_RING) * Math.PI * 2 + dir * spin * (1 + ring * 0.16) + ring * 0.29
+        (seat / perRing) * Math.PI * 2 + dir * spin * (1 + ring * 0.16) + ring * 0.29
       const r = radius * (0.9 + ring * 0.05)
       const y = owner.y + 0.24 + ring * 0.66 + Math.sin(this.age * 4.4 + i) * 0.11
 

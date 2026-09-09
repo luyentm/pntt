@@ -133,13 +133,18 @@ export class Input {
 
   /**
    * Ô skill vừa được bấm; trả -1 nếu không có.
-   * Quét tới 8 ô chứ không 6: cảnh giới cao mở thêm chiêu, và số ô do bảng
-   * SKILLS quyết định — input không nên là chỗ chặn nội dung.
+   *
+   * Quét cả hàng số chứ không dừng ở 6 hay 8: cảnh giới cao mở thêm chiêu, và
+   * số ô do bảng SKILLS quyết định — input không nên là chỗ chặn nội dung.
+   *
+   * `Digit0` là ô THỨ MƯỜI, không phải ô số không: trên bàn phím nó nằm ngay
+   * sau `9`, nên hàng số đọc ra là 1…0 và ô cuối vẫn ở đúng chỗ ngón tay tìm.
    */
   skillPressed(): number {
-    for (let i = 1; i <= 8; i++) {
+    for (let i = 1; i <= 9; i++) {
       if (this.pressed.has(`Digit${i}`)) return i - 1
     }
+    if (this.pressed.has('Digit0')) return 9
     return -1
   }
 

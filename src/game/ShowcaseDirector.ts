@@ -1,13 +1,24 @@
+import type { RealmPosition } from './data/realms'
 import { SHOWCASE, type ShowcaseStep } from './data/showcase'
 
 /** Những gì bộ trình diễn YÊU CẦU màn làm. Nó không tự làm gì cả. */
 export interface ShowcaseActions {
-  cast(slot: number): void
+  /** Thi triển theo ID chiêu, không theo ô — mười ô không chứa nổi mười bảy chiêu. */
+  cast(id: string): void
   melee(): void
   setFlight(on: boolean): void
   setMeditate(on: boolean): void
   breakthroughFx(): void
-  refreshDummies(): void
+  /** Dựng lại mộc nhân và bia đá. */
+  refreshTargets(): void
+  /**
+   * Đặt cảnh giới cho bước sắp diễn.
+   *
+   * Bắt buộc phải có, không phải chuyện trang trí: số kiếm trúc, độ dày khiên
+   * và sức gặm của đàn trùng đều suy từ cảnh giới, nên diễn một chiêu Nguyên
+   * Anh ở thân Kết Đan là nói sai về chính chiêu đó.
+   */
+  setRealm(realm: RealmPosition): void
   /** Bước mới bắt đầu — UI hiện tên và chú thích. */
   announce(step: ShowcaseStep, index: number, total: number): void
 }
@@ -16,7 +27,7 @@ export interface ShowcaseActions {
 const READ_DELAY = 0.9
 
 /**
- * Bộ điều phối chế độ trình diễn thần thông.
+ * Bộ điều phối Luyện Kiếm Đài.
  *
  * Thuần logic, cùng khuôn với `WaveDirector`: nó không cầm scene, không cầm
  * three, chỉ đếm thời gian và gọi yêu cầu qua `ShowcaseActions`. Nhờ vậy chạy
@@ -105,14 +116,18 @@ export class ShowcaseDirector {
     if (this.timer <= 0) this.next(actions)
   }
 
-  /** Vào một bước: đặt lại đồng hồ, dựng bia đỡ, báo UI. */
+  /** Vào một bước: đặt cảnh giới, đặt lại đồng hồ, dựng bia, báo UI. */
   private enter(actions: ShowcaseActions): void {
     const step = this.current
     if (!step) return
     this.timer = step.duration
     this.beatTimer = 0
     this.fired = false
-    if (step.refreshDummies) actions.refreshDummies()
+    // Cảnh giới TRƯỚC khi dựng bia: máu của bia suy từ cảnh giới người chơi,
+    // nên dựng trước rồi mới nâng cảnh giới thì cả vòng bia mỏng đi một bậc và
+    // chúng chết ngay nhịp quét đầu tiên
+    actions.setRealm(step.realm)
+    if (step.refreshTargets) actions.refreshTargets()
     actions.announce(step, this.index, this.total)
   }
 
@@ -133,7 +148,7 @@ export class ShowcaseDirector {
   private perform(step: ShowcaseStep, actions: ShowcaseActions): void {
     switch (step.action.kind) {
       case 'skill':
-        actions.cast(step.action.slot)
+        actions.cast(step.action.id)
         return
       case 'melee':
         actions.melee()

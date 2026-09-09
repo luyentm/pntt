@@ -1,3 +1,4 @@
+import { SKILLS } from '@/game/data/skills'
 import { FPS_CAP_CHOICES, type Settings } from '@/game/Settings'
 
 export type MenuScreen = 'main' | 'pause' | 'settings' | 'none'
@@ -166,14 +167,17 @@ export class Menu {
     )
     const demoNote = document.createElement('div')
     demoNote.className = 'menu-note'
-    demoNote.textContent = 'Trình diễn 7 pháp thuật, ngự kiếm phi hành và 33 kiếm trúc — không ăn vào tiến độ.'
+    // Đếm từ bảng SKILLS, không viết cứng con số: thêm một chiêu mà quên sửa
+    // dòng này thì menu nói sai với người chơi ngay ở màn đầu tiên
+    demoNote.textContent =
+      `Trình diễn ${SKILLS.length} pháp thuật, ngự kiếm phi hành và 33 kiếm trúc — không ăn vào tiến độ.`
     this.body.appendChild(demoNote)
 
     this.body.appendChild(this.button('Cài đặt', () => this.openSettings('main')))
 
     const hint = document.createElement('div')
     hint.className = 'menu-note menu-note--dim'
-    hint.textContent = 'WASD di chuyển · chuột trái đánh · 1…7 pháp thuật · Esc tạm dừng'
+    hint.textContent = 'WASD di chuyển · chuột trái đánh · 1…0 pháp thuật · Esc tạm dừng'
     this.body.appendChild(hint)
 
     // Nói thẳng trên máy chỉ có cảm ứng. Bản này chưa có điều khiển cảm ứng

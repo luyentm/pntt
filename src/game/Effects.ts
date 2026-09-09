@@ -17,6 +17,12 @@ export type EffectKind =
   | 'trungDoc'
   /** Không điều khiển được. */
   | 'dongBang'
+  /** Giá Y Thần Công: đốt tinh huyết đổi lấy sát thương. */
+  | 'giaY'
+  /** Đại Diễn Quyết: thần thức bùng lên, pháp lực mạnh hơn. */
+  | 'daiDien'
+  /** Phong Lôi Sí: đôi cánh phong lôi, tốc độ di chuyển tăng vọt. */
+  | 'phongLoi'
 
 export interface ActiveEffect {
   kind: EffectKind
@@ -28,6 +34,9 @@ export interface ActiveEffect {
    *  chamLai  — phần tốc độ bị mất, 0..1
    *  thieuDot/trungDoc — sát thương mỗi giây
    *  dongBang — không dùng
+   *  giaY     — phần sát thương CỘNG THÊM, 0.6 = +60%
+   *  daiDien  — phần pháp lực CỘNG THÊM, 0.5 = +50%
+   *  phongLoi — phần tốc độ CỘNG THÊM, 0.8 = +80%
    */
   magnitude: number
   /** Ai gây ra — để tính công trạng và để hiệu ứng không tự cộng dồn vô hạn. */
@@ -116,12 +125,20 @@ export class EffectSet {
     return dotDamage
   }
 
-  /** Hệ số tốc độ di chuyển do các trạng thái gây ra. */
+  /**
+   * Hệ số tốc độ di chuyển do các trạng thái gây ra.
+   *
+   * Phong Lôi Sí NHÂN vào phần còn lại sau khi trừ làm chậm, không cộng song
+   * song: cánh phong lôi làm người bay nhanh hơn, nó không gỡ được bùa làm
+   * chậm đang dính trên chân. Cộng song song thì hai thứ triệt tiêu nhau và
+   * một chiêu khống chế mất tác dụng đúng lúc đối phương bay nhanh nhất.
+   */
   speedMultiplier(): number {
     if (this.has('dongBang')) return 0
     const slow = this.find('chamLai')
-    if (!slow) return 1
-    return Math.max(0.15, 1 - slow.magnitude)
+    const base = slow ? Math.max(0.15, 1 - slow.magnitude) : 1
+    const wings = this.find('phongLoi')
+    return wings ? base * (1 + wings.magnitude) : base
   }
 
   /** Có mất điều khiển hay không. */

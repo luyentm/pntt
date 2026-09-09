@@ -55,9 +55,66 @@ const ELEMENT_TRAIL: Record<string, { head: number; tail: number }> = {
 const TRAIL_LOI = { head: 0xeaf7ff, tail: 0x6f9fff }
 /** Ma đạo: huyết sang tím đen. */
 const TRAIL_MA = { head: 0xd94a52, tail: Palette.aoMaDao }
+/**
+ * Phong lam: lam ngọc sáng sang lam sâu — cú lướt Phong Độn Thuật.
+ *
+ * Khoảng chuyển màu RỘNG là chỗ phân biệt nó với hai cặp lam đã có: thuỷ đi
+ * trắng băng → lam vương (#D8F6FF→#2F7FD6) và sấm đi trắng xanh → lam nhạt
+ * (#EAF7FF→#6F9FFF), cả hai đều bắt đầu gần như trắng nên nhìn nhanh thì hai
+ * cặp đó chỉ khác nhau ở độ đậm của đuôi. Cặp này bắt đầu ở lam ngọc RÕ MÀU rồi
+ * chìm xuống lam sâu, nên nó đọc ra là một dải xanh thật chứ không phải một vệt
+ * trắng hơi ngả xanh.
+ */
+const TRAIL_PHONG = { head: 0x9ff3ff, tail: 0x2445c8 }
+/**
+ * Giá Y Thần Công: huyết sáng sang huyết thẫm.
+ *
+ * Đây là chỗ CỐ TÌNH phá quy tắc "đầu vệt ngả vàng/trắng". Đầu vàng đọc ra là
+ * kim quang chính đạo, mà chiêu này đang đốt tinh huyết của chính người thi
+ * triển — nó phải trông sai và nguy, không phải trông oai. Vẫn giữ đầu SÁNG để
+ * còn ra được lực, chỉ đổi sắc.
+ */
+const TRAIL_GIA_Y = { head: 0xff9a8a, tail: 0x7a0f1e }
+/** Đại Diễn Quyết: trắng tía sang tía sâu — thần thức, không thuộc ngũ hành nào. */
+const TRAIL_DAI_DIEN = { head: 0xf0e4ff, tail: 0x8a4be0 }
+/** Thực Kim Trùng: vàng trùng sang lục ô liu — sắc của thứ đang gặm, không phải của lửa. */
+const TRAIL_TRUNG = { head: 0xe9ff9e, tail: 0x6e8f12 }
+
+/**
+ * Cặp màu vệt gắn theo TỪNG CHIÊU, tra trước khi tra theo ngũ hành.
+ *
+ * Cần vì ngũ hành của chiêu không phải lúc nào cũng là màu của chiêu. Thiên Lôi
+ * Phù và cú giộng của Mặc Đại Phu đều là hệ `kim`, lấy theo hệ thì tia sét ra
+ * vàng đồng và đòn của lão trông như một chiêu kim quang chính đạo. Phong Độn
+ * Thuật là `vo` nên nó rơi vào cặp chủ đạo — tức cú lướt trông y hệt vệt chạy bộ,
+ * đúng thứ mà một chiêu nên tránh nhất.
+ *
+ * Gom vào một bảng thay vì rải `if (id === …)` ở từng chỗ nghe sự kiện: trước
+ * đây `skill:area` có ngoại lệ cho sấm mà `skill:cast` thì không, nên đoạn TỤ KHÍ
+ * của Thiên Lôi Phù bốc lên màu vàng đồng rồi tia sét đánh xuống màu lam điện —
+ * đoạn dẫn khí nói sai về chiêu đang tới.
+ */
+export const SKILL_TRAIL: Record<string, { head: number; tail: number }> = {
+  thienLoiPhu: TRAIL_LOI,
+  bossSlam: TRAIL_MA,
+  phongDon: TRAIL_PHONG,
+  giaYThanCong: TRAIL_GIA_Y,
+  daiDienQuyet: TRAIL_DAI_DIEN,
+  thucKimTrung: TRAIL_TRUNG,
+}
 
 function elementTrail(element: string): { head: number; tail: number } {
   return ELEMENT_TRAIL[element] ?? ELEMENT_TRAIL.vo!
+}
+
+/**
+ * Cặp màu vệt của một chiêu: theo id trước, ngũ hành sau.
+ *
+ * Công khai cùng `SKILL_TRAIL` để test khoá được hai chỗ dễ trôi: id trong bảng
+ * phải là chiêu thật, và chiêu có cặp riêng thì không được rơi về cặp ngũ hành.
+ */
+export function skillTrail(id: string, element: string): { head: number; tail: number } {
+  return SKILL_TRAIL[id] ?? elementTrail(element)
 }
 
 /**
@@ -205,7 +262,7 @@ export class Vfx {
         // thứ làm chiêu có cảm giác được dựng lên thay vì bật ra từ không khí,
         // và nó cũng là lời báo trước cho đối thủ, nên vừa đẹp vừa công bằng.
         if (e.castTime < 0.12) return
-        const tone = elementTrail(e.element)
+        const tone = skillTrail(e.id, e.element)
         this.spokes(e.x, e.y + 0.35, e.z, 7, {
           ...tone,
           inner: 0.2,
@@ -224,10 +281,9 @@ export class Vfx {
         const color = ELEMENT_COLOR[e.element] ?? Palette.linh
         const isLightning = e.skillId === 'thienLoiPhu'
         const isSlam = e.skillId === 'bossSlam'
-        // Sấm và đòn giộng của boss có cặp màu RIÊNG, không lấy theo ngũ hành:
-        // cả hai đều là 'kim' nên nếu lấy theo hệ thì tia sét ra màu vàng đồng
-        // và cú giộng của Mặc Đại Phu trông như một chiêu kim quang chính đạo.
-        const tone = isLightning ? TRAIL_LOI : isSlam ? TRAIL_MA : elementTrail(e.element)
+        // Màu theo bảng `SKILL_TRAIL` (xem lý do ở đó). Hai cờ trên vẫn cần cho
+        // những thứ KHÁC màu: nhịp tan, độ bốc của nan hoa, tia sét, rung camera.
+        const tone = skillTrail(e.skillId, e.element)
 
         // Thiên Lôi Phù KHÔNG dùng cột của AreaBurst nữa: giờ đã có tia sét
         // thật, và cái cột chỉ che mất nó. Còn lại chỉ là vòng loang trên đất.
@@ -291,26 +347,42 @@ export class Vfx {
 
     this.unsubscribe.push(
       bus.on('skill:buff', (e) => {
-        this.burst.spawn(e.x, e.y, e.z, 1.4, { color: Palette.kim, life: 0.45 })
-        // Bốn dải kim quang cuộn lên quanh người: khiên là thứ được DỰNG LÊN, và
-        // đường xoắn đi lên là cách nói điều đó mà không cần một chữ nào
+        // Màu theo CHIÊU, không phải kim quang cho mọi thứ. Trước đây chỉ có một
+        // chiêu hỗ trợ nên tô cứng màu kim là đủ; giờ có ba, mà Giá Y Thần Công
+        // dựng lên bằng cột kim quang thì nó đọc ra là một chiêu chính đạo —
+        // đúng thứ mà chiêu đốt tinh huyết không được phép trông giống.
+        const tone = skillTrail(e.id, 'vo')
+        this.burst.spawn(e.x, e.y, e.z, 1.4, { color: tone.tail, life: 0.45 })
+        // Bốn dải cuộn lên quanh người: trạng thái hỗ trợ là thứ được DỰNG LÊN,
+        // và đường xoắn đi lên là cách nói điều đó mà không cần một chữ nào
         for (let i = 0; i < 4; i++) {
           this.trails.strokeSpiral(e.x, e.y, e.z, 0.62, 1.9, 1.1, (i / 4) * Math.PI * 2, {
-            ...ELEMENT_TRAIL.kim!,
+            ...tone,
             width: 0.06,
             opacity: 0.7,
             fade: 0.55,
           })
         }
-        this.floats.spawn(e.x, e.y + 1.4, e.z, `⛨ ${e.magnitude}`, 'info')
+        // Chữ bay lên phải đọc được cho CẢ HAI loại độ mạnh. `khien` mang một
+        // LƯỢNG (hấp thụ 1870 sát thương) nên hiện số là đúng; Giá Y và Đại Diễn
+        // mang một TỈ LỆ, và "⛨ 0.6" thì không nói gì với người chơi cả — số đó
+        // phải đọc ra là +60%.
+        const label =
+          e.kind === 'khien' ? `⛨ ${e.magnitude}` : `+${Math.round(e.magnitude * 100)}%`
+        this.floats.spawn(e.x, e.y + 1.4, e.z, label, 'info')
       }),
     )
 
     this.unsubscribe.push(
       bus.on('skill:dash', (e) => {
-        // Vệt gió: dùng chính vệt chém nhưng dẹt và mờ, màu linh khí
+        // Vệt gió: dùng chính vệt chém nhưng dẹt và mờ.
+        //
+        // Lấy lam giữa của `Palette.thuy` chứ không lấy đầu hay đuôi của
+        // `TRAIL_PHONG`: đây là một tấm quạt dẹt một màu, mà đầu cặp thì gần như
+        // trắng (tan vào nền trời) và đuôi cặp thì thẫm (tan vào bóng cỏ). Chỉ
+        // dải ribbon mới có chuyển màu để dùng được cả hai đầu đó.
         this.slash.spawn(e.x, e.y + 0.45, e.z, e.facing, e.distance * 0.55, {
-          color: Palette.linh,
+          color: Palette.thuy,
           life: 0.3,
         })
         // Và một vệt dải chạy hết cú lướt. Vệt chém chỉ nói "có gì quét qua đây";
@@ -318,9 +390,11 @@ export class Vfx {
         // cho người chơi thấy mình vừa dịch đi bao xa.
         const dx = Math.sin(e.facing) * e.distance
         const dz = Math.cos(e.facing) * e.distance
+        // Cặp lam riêng, KHÔNG phải cặp chủ đạo: cú lướt và cú chạy bộ đi cùng
+        // một đường thẳng ngang mặt đất, nên nếu cùng màu thì Phong Độn Thuật
+        // đọc ra là "chạy nhanh một nhịp" chứ không phải một chiêu.
         this.trails.strokeLine(e.x, e.y + 0.55, e.z, e.x + dx, e.y + 0.55, e.z + dz, {
-          head: TRAIL_HEAD,
-          tail: TRAIL_TAIL,
+          ...TRAIL_PHONG,
           width: 0.3,
           opacity: 0.8,
           fade: 0.34,

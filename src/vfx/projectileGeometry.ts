@@ -3,7 +3,7 @@ import { at, mergeAll, paint } from '@/art/geo'
 import { Palette } from '@/art/Palette'
 
 /** Kiểu tạo hình của phi hành khí. */
-export type ProjectileLook = 'kiem' | 'hoaCau' | 'phuLuc'
+export type ProjectileLook = 'kiem' | 'hoaCau' | 'phuLuc' | 'kiemKhi'
 
 /**
  * Geometry chuẩn hoá cho phi hành khí, hướng mũi về +Z, dài/rộng khoảng 1 unit.
@@ -27,6 +27,22 @@ export function projectileGeometry(look: ProjectileLook): BufferGeometry {
 
       const grip = new BoxGeometry(0.05, 0.05, 0.16)
       parts.push(paint(at(grip, 0, 0, -0.41), Palette.than))
+      return mergeAll(parts)
+    }
+    case 'kiemKhi': {
+      // Canh Kim Kiếm Khí: KHÔNG phải một thanh kiếm — là một lưỡi khí. Không
+      // chuôi, không hộ thủ, chỉ một phiến mỏng vót nhọn hai đầu. Đó là chỗ
+      // phân biệt nó với Ngự Kiếm Thuật ở silhouette: bảy vật thể bay thành
+      // quạt mà mỗi cái đều có chuôi thì mắt đọc ra "bảy thanh kiếm rơi", còn
+      // bảy phiến nhọn thì đọc ra "một loạt khí chém".
+      const parts: BufferGeometry[] = []
+      const front = new ConeGeometry(0.07, 0.62, 4)
+      front.rotateX(Math.PI / 2)
+      parts.push(paint(at(front, 0, 0, 0.31), Palette.kim))
+
+      const back = new ConeGeometry(0.07, 0.34, 4)
+      back.rotateX(-Math.PI / 2)
+      parts.push(paint(at(back, 0, 0, -0.17), Palette.vang))
       return mergeAll(parts)
     }
     case 'hoaCau': {

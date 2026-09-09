@@ -174,6 +174,20 @@ describe('CombatWorld — gây sát thương', () => {
     expect(foe.invuln).toBeGreaterThan(0)
   })
 
+  it('Giá Y Thần Công nhân vào sát thương của mọi đòn', () => {
+    // Nhân ở `strike` chứ không trong một chiêu cụ thể: trong nguyên tác nó là
+    // sức mạnh của cả người, nên nó phải ăn vào nhát kiếm, pháp vực, phi kiếm
+    // và đàn kiếm trúc như nhau. Test ở đây vì đây là cửa duy nhất cả bốn đi qua.
+    const thuong = world.strike(attacker, foe, 1)!.amount
+    foe.hp = foe.stats.maxSinhLuc
+    foe.invuln = 0
+
+    attacker.effects.apply('giaY', 8, 0.6, attacker.id)
+    const donGiaY = world.strike(attacker, foe, 1)!.amount
+
+    expect(donGiaY).toBeCloseTo(thuong * 1.6, 5)
+  })
+
   it('BỎ QUA đòn khi mục tiêu đang miễn thương', () => {
     // Nếu không có chốt này thì một đòn có thể trừ máu nhiều lần khi có nhiều
     // nguồn sát thương trúng cùng frame (đòn chém + phi kiếm + độc)

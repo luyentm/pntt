@@ -7,7 +7,7 @@ import { BreakthroughTrial, type TrialOutcome } from '@/game/BreakthroughTrial'
 import { unitDef, type BossPhase } from '@/game/data/units'
 import { rollDrops, tuViReward } from '@/game/data/dropTables'
 import { itemDef } from '@/game/data/items'
-import { REALM, majorRealm } from '@/game/data/realms'
+import { REALM, majorRealm, type RealmPosition } from '@/game/data/realms'
 import { recipeById } from '@/game/data/recipes'
 import { BossBar } from '@/ui/BossBar'
 import { ShowcasePanel } from '@/ui/ShowcasePanel'
@@ -24,7 +24,7 @@ import type { Panel } from '@/ui/panels/Panel'
 import { Vfx } from '@/vfx/Vfx'
 import { Crowd } from './Crowd'
 import { PickupSystem } from './Pickups'
-import { SwordStorm, SWORD_COUNT } from './SwordStorm'
+import { SwordStorm, SWORD_CAPACITY } from './SwordStorm'
 import { CombatWorld } from './CombatWorld'
 import { ProjectileSystem } from './Projectile'
 import { Agent, type AgentContext } from './Agent'
@@ -195,12 +195,11 @@ export class ArenaScene implements GameScene {
   private crowd!: Crowd
   private showcasePanel!: ShowcasePanel
   private readonly showcaseActions: ShowcaseActions = {
-    cast: (slot) => {
-      const p = this.player
-      // Xoá hồi chiêu của ĐÚNG ô này rồi mới gọi: showreel phải diễn được cả
-      // Thanh Trúc Phong Vân Kiếm (hồi 22 giây) trong một bước 9 giây
-      p.caster.clearCooldown(slot)
-      p.castSlot(slot, this.combat, this.projectiles, this.swords)
+    cast: (id) => {
+      // Không phải xoá hồi chiêu ở đây: `enterDemo` đã bật `caster.noCooldown`,
+      // nên showreel diễn được cả Thanh Trúc Phong Vân Kiếm (hồi 22 giây) trong
+      // một bước 9 giây, và người xem tự bấm chiêu cũng không phải chờ
+      this.player.castSkill(id, this.combat, this.projectiles, this.swords)
     },
     melee: () => this.player.triggerAttack(),
     setFlight: (on) => this.player.setFlying(on),
@@ -216,7 +215,8 @@ export class ArenaScene implements GameScene {
         z: p.pos.z,
       })
     },
-    refreshDummies: () => this.spawnDummies(),
+    refreshTargets: () => this.spawnDummies(),
+    setRealm: (realm) => this.setDemoRealm(realm),
     announce: (step, index, total) => this.showcasePanel.setStep(step, index, total),
   }
   private bossBar!: BossBar
@@ -447,7 +447,7 @@ export class ArenaScene implements GameScene {
       this.vfx.follow(`sword:${seat}`, true, x, y, z, SWORD_TRAIL)
     }
     this.swords.onSwordsEnd = () => {
-      for (let seat = 0; seat < SWORD_COUNT; seat++) {
+      for (let seat = 0; seat < SWORD_CAPACITY; seat++) {
         this.vfx.follow(`sword:${seat}`, false, 0, 0, 0)
       }
     }
@@ -888,7 +888,29 @@ export class ArenaScene implements GameScene {
   }
 
   /** Cảnh giới mở hết thần thông: Kết Đan, để cả 7 chiêu và phi hành đều dùng được. */
-  private static readonly DEMO_REALM = { major: REALM.KET_DAN, tier: 2 }
+  /** Cảnh giới lúc vừa vào Luyện Kiếm Đài, trước khi bước đầu tiên đặt lại. */
+  private static readonly DEMO_REALM: RealmPosition = { major: REALM.LUYEN_KHI, tier: 12 }
+
+  /**
+   * Đặt cảnh giới cho chế độ trình diễn và bù đầy sinh lực, linh lực.
+   *
+   * Bù đầy MỖI LẦN chứ không chỉ lúc vào: showreel diễn Giá Y Thần Công mỗi
+   * vòng, mỗi lần đốt 18% máu, nên sau vài vòng thanh máu cạn tới đáy và người
+   * xem đọc ra là nhân vật đang chết dở.
+   *
+   * Ghi thẳng vào `cultivation.realm` chứ không qua `loadFrom` để không đụng
+   * tới Tu Vi và chuỗi thất bại — chế độ này không được phép chạm vào tiến độ.
+   */
+  private setDemoRealm(realm: RealmPosition): void {
+    const p = this.player
+    p.cultivation.realm.major = realm.major
+    p.cultivation.realm.tier = realm.tier
+    p.cultivation.tuVi = 0
+    p.refreshStats()
+    p.combatant.hp = p.combatant.stats.maxSinhLuc
+    p.linhLuc = p.combatant.stats.maxLinhLuc
+    this.hud.setRealm(p.realm)
+  }
 
   /**
    * Vào chế độ trình diễn.
@@ -902,18 +924,12 @@ export class ArenaScene implements GameScene {
     this.demoMode = true
 
     const p = this.player
-    p.cultivation.loadFrom({
-      major: ArenaScene.DEMO_REALM.major,
-      tier: ArenaScene.DEMO_REALM.tier,
-      tuVi: 0,
-      failStreak: 0,
-      linhNhu: 0,
-      totalTuVi: 0,
-    })
-    p.refreshStats()
-    p.combatant.hp = p.combatant.stats.maxSinhLuc
-    p.linhLuc = p.combatant.stats.maxLinhLuc
+    // Cảnh giới KHÔNG chốt một lần ở đây nữa: mỗi bước trình diễn tự khai cảnh
+    // giới của nó, và bộ điều phối gọi `setRealm` trước khi diễn. Chốt cứng một
+    // giá trị thì mọi chiêu suy theo cảnh giới đều nói sai ở phần lớn các bước.
+    this.setDemoRealm(ArenaScene.DEMO_REALM)
     p.caster.freeCast = true
+    p.caster.noCooldown = true
     p.caster.reset()
     this.godMode = true
 
@@ -934,6 +950,25 @@ export class ArenaScene implements GameScene {
     this.showcasePanel.setPlaying(true)
   }
 
+  /**
+   * Bốn chỗ đặt đèn lạnh cho bộ stylized — chân bốn cột đá quanh sân.
+   *
+   * Ở đây chứ không trong bảng debug vì màn mới là nơi biết cột đá đứng đâu:
+   * chép lại `PILLAR_RING` sang chỗ khác thì đổi bố cục sân là đèn treo lơ lửng
+   * giữa không khí.
+   *
+   * `y = 1.4` chứ không 3.1: 3.1 là đúng chóp cột, và đèn đặt BÊN TRONG vật nó
+   * rọi thì khoảng cách gần bằng 0 nên với `decay: 2` chóp cột cháy trắng thành
+   * quầng bloom to nhất khung hình, hút mắt khỏi nhân vật. Ở 1.4 đèn nằm ngang
+   * thân cột và đổ một vũng lam ra mặt đất quanh chân.
+   */
+  get coolSpots(): ReadonlyArray<{ x: number; y: number; z: number }> {
+    return [0, 1, 2, 3].map((i) => {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4
+      return { x: Math.cos(a) * PILLAR_RING, y: 1.4, z: Math.sin(a) * PILLAR_RING }
+    })
+  }
+
   /** Ra khỏi chế độ trình diễn và trả màn về trạng thái chơi thật. */
   exitDemo(): void {
     if (!this.demoMode) return
@@ -942,6 +977,7 @@ export class ArenaScene implements GameScene {
     this.showcase.reset()
     this.showcasePanel.hide()
     this.player.caster.freeCast = false
+    this.player.caster.noCooldown = false
     this.player.caster.reset()
     this.godMode = false
     this.waveActions.clearEnemies()
@@ -1009,7 +1045,7 @@ export class ArenaScene implements GameScene {
     if (input.wasPressed('KeyQ')) this.showcase.prev(this.showcaseActions)
     if (input.wasPressed('Escape')) this.ctx.bus.emit('game:pauseRequest', {})
 
-    // Vẫn cho tự thi triển bằng 1…7 trong lúc showreel đang chạy — bấm một chiêu
+    // Vẫn cho tự thi triển bằng 1…0 trong lúc showreel đang chạy — bấm một chiêu
     // là chuyển sang tự chơi, vì rõ ràng người chơi muốn tự làm
     if (input.skillPressed() >= 0 && this.showcase.playing) {
       this.showcase.playing = false
@@ -1396,6 +1432,10 @@ export class ArenaScene implements GameScene {
       this.showcase.fixedUpdate(dt, this.showcaseActions)
       // Linh lực luôn đầy: chế độ này để XEM chiêu, không phải để quản tài nguyên
       this.player.linhLuc = this.player.combatant.stats.maxLinhLuc
+      // Sinh lực cũng vậy, và ở đây nó còn BẮT BUỘC: Giá Y Thần Công đốt 18%
+      // sinh lực mỗi lần, showreel diễn nó mỗi vòng, nên không bù thì sau vài
+      // vòng thanh máu cạn tới đáy và người xem đọc ra là nhân vật đang chết dở
+      this.player.combatant.hp = this.player.combatant.stats.maxSinhLuc
     } else {
       this.playTime += dt
       this.updateCultivationInput()
@@ -1527,7 +1567,13 @@ export class ArenaScene implements GameScene {
     this.updatePlayerTrails(frameDt)
     this.vfx.update(frameDt, camera.camera, w, h)
     this.bars.update(frameDt, this.combat.all, camera.camera, w, h)
-    this.skillBar.update(frameDt, this.player.caster, this.player.realm, this.player.linhLuc)
+    this.skillBar.update(
+      frameDt,
+      this.player.caster,
+      this.player.realm,
+      this.player.linhLuc,
+      this.player.loadout,
+    )
     this.hud.setCultivation(this.player.cultivation)
     this.crowd.update(frameDt)
     // Ở chế độ trình diễn thì KHÔNG nhịp lớp phủ thủ trận.

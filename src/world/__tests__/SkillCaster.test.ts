@@ -4,7 +4,7 @@ import { EventBus } from '@/core/EventBus'
 import type { GameEvents } from '@/core/events'
 import { Rng } from '@/core/Rng'
 import { REALM, type RealmPosition } from '@/game/data/realms'
-import { SKILLS } from '@/game/data/skills'
+import { SKILLS, skillDef } from '@/game/data/skills'
 import { deriveStats, type BaseStats } from '@/game/Stats'
 import { Combatant, type CombatantView, type Side } from '../Combatant'
 import { CombatWorld } from '../CombatWorld'
@@ -37,13 +37,9 @@ class FakeView implements CombatantView {
 
 /** Cảnh giới đủ cao để mở hết mọi chiêu trong bảng. */
 const HIGH: RealmPosition = { major: REALM.KET_DAN, tier: 3 }
+/** Đỉnh thang — mở được cả những chiêu Nguyên Anh. */
+const TOP: RealmPosition = { major: REALM.NGUYEN_ANH, tier: 3 }
 const START: RealmPosition = { major: REALM.LUYEN_KHI, tier: 0 }
-
-function slotOf(id: string): number {
-  const i = SKILLS.findIndex((s) => s.id === id)
-  if (i < 0) throw new Error(`không có chiêu ${id}`)
-  return i
-}
 
 function makeCombatant(side: Side, x: number, z: number, realm = HIGH): Combatant {
   const c = new Combatant(side, deriveStats(base, realm), realm, 0.3, new FakeView())
@@ -82,19 +78,19 @@ describe('SkillCaster', () => {
   describe('cổng mở theo cảnh giới', () => {
     it('lúc mới nhập môn chỉ mở được chiêu đầu tiên', () => {
       // Đây là phần thưởng cụ thể của việc tu luyện: đột phá thì mở chiêu mới
-      expect(caster.isUnlocked(slotOf('nguKiem'), START)).toBe(true)
-      expect(caster.isUnlocked(slotOf('thienLoiPhu'), START)).toBe(false)
-      expect(caster.isUnlocked(slotOf('bangPhongPhu'), START)).toBe(false)
+      expect(caster.isUnlocked('nguKiem', START)).toBe(true)
+      expect(caster.isUnlocked('thienLoiPhu', START)).toBe(false)
+      expect(caster.isUnlocked('bangPhongPhu', START)).toBe(false)
     })
 
     it('cảnh giới cao thì mở hết', () => {
-      for (let i = 0; i < SKILLS.length; i++) {
-        expect(caster.isUnlocked(i, HIGH)).toBe(true)
+      for (const def of SKILLS) {
+        expect(caster.isUnlocked(def.id, TOP), def.name).toBe(true)
       }
     })
 
     it('từ chối thi triển chiêu chưa mở, và NÓI RÕ lý do', () => {
-      const r = caster.tryCast(slotOf('thienLoiPhu'), START, 999, ctx)
+      const r = caster.tryCast('thienLoiPhu', START, 999, ctx)
       expect(r.ok).toBe(false)
       if (!r.ok) expect(r.reason).toMatch(/cảnh giới/)
     })
@@ -102,27 +98,27 @@ describe('SkillCaster', () => {
 
   describe('linh lực và hồi chiêu', () => {
     it('từ chối khi không đủ linh lực', () => {
-      const r = caster.tryCast(0, HIGH, 0, ctx)
+      const r = caster.tryCast('nguKiem', HIGH, 0, ctx)
       expect(r.ok).toBe(false)
       if (!r.ok) expect(r.reason).toMatch(/linh lực/i)
     })
 
     it('trả về đúng giá linh lực để bên gọi trừ', () => {
-      const slot = slotOf('nguKiem')
+      const slot = 'nguKiem'
       const r = caster.tryCast(slot, HIGH, 999, ctx)
       expect(r.ok).toBe(true)
-      if (r.ok) expect(r.cost).toBe(SKILLS[slot]!.linhLucCost)
+      if (r.ok) expect(r.cost).toBe(skillDef(slot).linhLucCost)
     })
 
     it('bật hồi chiêu ngay lúc bấm, không đợi chiêu phát', () => {
       // Đợi tới lúc phát mới bật thì người chơi bấm dồn sẽ phát nhiều lần
-      const slot = slotOf('nguKiem')
+      const slot = 'nguKiem'
       caster.tryCast(slot, HIGH, 999, ctx)
       expect(caster.cooldownLeft(slot)).toBeGreaterThan(0)
     })
 
     it('không thi triển lại được khi đang hồi', () => {
-      const slot = slotOf('nguKiem')
+      const slot = 'nguKiem'
       caster.tryCast(slot, HIGH, 999, ctx)
       runCast(caster, ctx, 0.6)
       const r = caster.tryCast(slot, HIGH, 999, ctx)
@@ -131,29 +127,54 @@ describe('SkillCaster', () => {
     })
 
     it('hồi xong thì thi triển lại được', () => {
-      const slot = slotOf('nguKiem')
+      const slot = 'nguKiem'
       caster.tryCast(slot, HIGH, 999, ctx)
-      runCast(caster, ctx, SKILLS[slot]!.cooldown + 0.3)
+      runCast(caster, ctx, skillDef(slot).cooldown + 0.3)
       expect(caster.cooldownLeft(slot)).toBe(0)
       expect(caster.tryCast(slot, HIGH, 999, ctx).ok).toBe(true)
     })
 
     it('không thi triển chiêu khác khi đang thi triển', () => {
-      caster.tryCast(slotOf('nguKiem'), HIGH, 999, ctx)
-      const r = caster.tryCast(slotOf('hoaCau'), HIGH, 999, ctx)
+      caster.tryCast('nguKiem', HIGH, 999, ctx)
+      const r = caster.tryCast('hoaCau', HIGH, 999, ctx)
       expect(r.ok).toBe(false)
       if (!r.ok) expect(r.reason).toMatch(/đang thi triển/i)
     })
 
     it('bị đóng băng thì không thi triển được', () => {
       me.effects.apply('dongBang', 2, 0)
-      const r = caster.tryCast(0, HIGH, 999, ctx)
+      const r = caster.tryCast('nguKiem', HIGH, 999, ctx)
       expect(r.ok).toBe(false)
+    })
+
+    it('noCooldown: thi triển lại được ngay khi vừa thu thế xong', () => {
+      // Chế độ trình diễn để XEM chiêu — chờ hồi 22 giây của Thanh Trúc Phong
+      // Vân Kiếm ở đó là chờ vô nghĩa
+      const slot = 'thanhTrucPhongVan'
+      caster.noCooldown = true
+
+      caster.tryCast(slot, HIGH, 999, ctx)
+      expect(caster.cooldownLeft(slot)).toBe(0)
+
+      const def = skillDef(slot)
+      runCast(caster, ctx, def.castTime + def.recover + 0.1)
+      expect(caster.isCasting).toBe(false)
+      expect(caster.tryCast(slot, HIGH, 999, ctx).ok).toBe(true)
+    })
+
+    it('noCooldown vẫn KHÔNG cho chiêu chồng lên nhau', () => {
+      // Cổng chống chồng chiêu là `phase`, không phải hồi chiêu — bỏ hồi chiêu
+      // không được phép biến showreel thành một tràng chiêu đè lên nhau
+      caster.noCooldown = true
+      caster.tryCast('nguKiem', HIGH, 999, ctx)
+      const r = caster.tryCast('hoaCau', HIGH, 999, ctx)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.reason).toMatch(/đang thi triển/i)
     })
 
     it('bị choáng GIỮA lúc dẫn khí thì chiêu bị phá, nhưng vẫn mất hồi chiêu', () => {
       // Nếu không mất hồi chiêu thì bị đánh gián đoạn lại thành có lợi
-      const slot = slotOf('hoaCau')
+      const slot = 'hoaCau'
       caster.tryCast(slot, HIGH, 999, ctx)
       me.stagger = 0.5
       caster.fixedUpdate(1 / 60, ctx)
@@ -164,9 +185,11 @@ describe('SkillCaster', () => {
 
   describe('Kim Quang Thuẫn', () => {
     it('dựng khiên với độ mạnh suy từ Thần Thức', () => {
-      const slot = slotOf('kimQuangThuan')
-      const action = SKILLS[slot]!.action
+      const slot = 'kimQuangThuan'
+      const action = skillDef(slot).action
       if (action.type !== 'hoTro') throw new Error('sai loại chiêu')
+      const perThanThuc = action.magnitudeFromThanThuc
+      if (!perThanThuc) throw new Error('Kim Quang Thuẫn phải suy độ mạnh từ Thần Thức')
 
       caster.tryCast(slot, HIGH, 999, ctx)
       runCast(caster, ctx)
@@ -174,11 +197,11 @@ describe('SkillCaster', () => {
       const shield = me.effects.find('khien')
       expect(shield).toBeDefined()
       // Suy từ Thần Thức nên khiên tự lên theo cảnh giới, không thành vô nghĩa ở Kết Đan
-      expect(shield!.magnitude).toBe(Math.round(me.stats.thanThuc * action.magnitudeFromThanThuc))
+      expect(shield!.magnitude).toBe(Math.round(me.stats.thanThuc * perThanThuc))
     })
 
     it('khiên mạnh hơn hẳn khi cảnh giới cao hơn', () => {
-      const slot = slotOf('kimQuangThuan')
+      const slot = 'kimQuangThuan'
       caster.tryCast(slot, HIGH, 999, ctx)
       runCast(caster, ctx)
       const high = me.effects.find('khien')!.magnitude
@@ -198,7 +221,7 @@ describe('SkillCaster', () => {
       world.rebuildIndex()
 
       const before = foe.hp
-      caster.tryCast(slotOf('thienLoiPhu'), HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
+      caster.tryCast('thienLoiPhu', HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
       runCast(caster, ctx)
       expect(foe.hp).toBeLessThan(before)
     })
@@ -210,7 +233,7 @@ describe('SkillCaster', () => {
       world.add(far)
       world.rebuildIndex()
 
-      caster.tryCast(slotOf('thienLoiPhu'), HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
+      caster.tryCast('thienLoiPhu', HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
       runCast(caster, ctx)
       expect(near.hp).toBeLessThan(near.stats.maxSinhLuc)
       expect(far.hp).toBe(far.stats.maxSinhLuc)
@@ -220,7 +243,7 @@ describe('SkillCaster', () => {
       const ally = makeCombatant('ally', 0, 6)
       world.add(ally)
       world.rebuildIndex()
-      caster.tryCast(slotOf('thienLoiPhu'), HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
+      caster.tryCast('thienLoiPhu', HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
       runCast(caster, ctx)
       expect(ally.hp).toBe(ally.stats.maxSinhLuc)
     })
@@ -230,8 +253,8 @@ describe('SkillCaster', () => {
       // nên biến mất — mất chiêu đọc ra là "game không nhận input"
       const events: GameEvents['skill:area'][] = []
       bus.on('skill:area', (e) => events.push(e))
-      const slot = slotOf('thienLoiPhu')
-      const action = SKILLS[slot]!.action
+      const slot = 'thienLoiPhu'
+      const action = skillDef(slot).action
       if (action.type !== 'phapVuc') throw new Error('sai loại chiêu')
 
       caster.tryCast(slot, HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 100 })
@@ -247,7 +270,7 @@ describe('SkillCaster', () => {
       const events: GameEvents['skill:area'][] = []
       bus.on('skill:area', (e) => events.push(e))
 
-      caster.tryCast(slotOf('thienLoiPhu'), HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
+      caster.tryCast('thienLoiPhu', HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 6 })
       // Rê chuột sang chỗ khác hoàn toàn trong lúc đang dẫn khí
       runCast(caster, { ...ctx, cursorX: -9, cursorZ: -9 })
 
@@ -261,7 +284,7 @@ describe('SkillCaster', () => {
       const foe = makeCombatant('enemy', 0, 5)
       world.add(foe)
       world.rebuildIndex()
-      caster.tryCast(slotOf('bangPhongPhu'), HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 5 })
+      caster.tryCast('bangPhongPhu', HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 5 })
       runCast(caster, ctx)
       expect(foe.effects.has('dongBang')).toBe(true)
       expect(foe.effectiveSpeed()).toBe(0)
@@ -272,7 +295,7 @@ describe('SkillCaster', () => {
     it('bật lướt và MIỄN THƯƠNG suốt cú lướt', () => {
       // Miễn thương chính là công dụng của chiêu: một nút né đòn, không phải
       // chỉ là đi nhanh
-      caster.tryCast(slotOf('phongDon'), HIGH, 999, ctx)
+      caster.tryCast('phongDon', HIGH, 999, ctx)
       runCast(caster, ctx, 0.1)
       expect(caster.dash.active).toBe(true)
       expect(me.invuln).toBeGreaterThan(0)
@@ -280,7 +303,7 @@ describe('SkillCaster', () => {
     })
 
     it('lướt kết thúc và vận tốc về 0', () => {
-      caster.tryCast(slotOf('phongDon'), HIGH, 999, ctx)
+      caster.tryCast('phongDon', HIGH, 999, ctx)
       runCast(caster, ctx, 1)
       expect(caster.dash.active).toBe(false)
       expect(caster.dash.vx).toBe(0)
@@ -289,7 +312,7 @@ describe('SkillCaster', () => {
 
     it('không bấm hướng nào thì lướt theo hướng đang nhìn', () => {
       me.facing = Math.PI / 2 // nhìn về +X
-      caster.tryCast(slotOf('phongDon'), HIGH, 999, ctx)
+      caster.tryCast('phongDon', HIGH, 999, ctx)
       runCast(caster, ctx, 0.06)
       expect(caster.dash.vx).toBeGreaterThan(0)
       expect(Math.abs(caster.dash.vz)).toBeLessThan(Math.abs(caster.dash.vx) * 0.1)
@@ -301,7 +324,7 @@ describe('SkillCaster', () => {
       // thì nó thành nút tự sát, đúng lúc người chơi bấm nó để thoát.
       me.facing = 0 // nhìn về +Z
       const away = { ...ctx, dashDirX: 0, dashDirZ: -1 } // bấm lùi về -Z
-      caster.tryCast(slotOf('phongDon'), HIGH, 999, away)
+      caster.tryCast('phongDon', HIGH, 999, away)
       runCast(caster, away, 0.06)
       expect(caster.dash.vz).toBeLessThan(0)
       expect(Math.abs(caster.dash.vx)).toBeLessThan(Math.abs(caster.dash.vz) * 0.1)
@@ -309,14 +332,14 @@ describe('SkillCaster', () => {
 
     it('hướng đi được chuẩn hoá — bấm chéo không lướt xa hơn bấm thẳng', () => {
       const straight = { ...ctx, dashDirX: 0, dashDirZ: 1 }
-      caster.tryCast(slotOf('phongDon'), HIGH, 999, straight)
+      caster.tryCast('phongDon', HIGH, 999, straight)
       runCast(caster, straight, 0.06)
       const speedStraight = Math.hypot(caster.dash.vx, caster.dash.vz)
 
       caster.reset()
       // Vector chéo chưa chuẩn hoá, độ dài ~1.41
       const diagonal = { ...ctx, dashDirX: 1, dashDirZ: 1 }
-      caster.tryCast(slotOf('phongDon'), HIGH, 999, diagonal)
+      caster.tryCast('phongDon', HIGH, 999, diagonal)
       runCast(caster, diagonal, 0.06)
       const speedDiagonal = Math.hypot(caster.dash.vx, caster.dash.vz)
 
@@ -324,19 +347,103 @@ describe('SkillCaster', () => {
     })
   })
 
+  describe('ba chiêu đặc trưng — Giá Y, Thực Kim Trùng, Đại Diễn', () => {
+    it('Giá Y Thần Công đốt đúng 18% sinh lực tối đa và lên trạng thái', () => {
+      const slot = 'giaYThanCong'
+      const action = skillDef(slot).action
+      if (action.type !== 'hoTro') throw new Error('sai loại chiêu')
+      const hpTruoc = me.hp
+
+      caster.tryCast(slot, HIGH, 999, ctx)
+      runCast(caster, ctx)
+
+      const burn = Math.round(me.stats.maxSinhLuc * (action.sinhLucCostFrac ?? 0))
+      expect(burn).toBeGreaterThan(0)
+      expect(me.hp).toBe(hpTruoc - burn)
+      expect(me.effects.find('giaY')?.magnitude).toBe(action.magnitudeFlat)
+    })
+
+    it('Giá Y Thần Công không bao giờ tự giết người thi triển', () => {
+      // Một chiêu mà bấm lúc gần chết là chết luôn thì đọc ra là lỗi game, không
+      // phải là "cái giá phải trả" — và người chơi không có cách nào biết trước
+      me.hp = 2
+      caster.tryCast('giaYThanCong', HIGH, 999, ctx)
+      runCast(caster, ctx)
+      expect(me.hp).toBeGreaterThanOrEqual(1)
+      expect(me.dead).toBe(false)
+      expect(me.effects.has('giaY')).toBe(true)
+    })
+
+    it('Giá Y Thần Công KHÔNG suy tỉ lệ theo Thần Thức', () => {
+      // Suy theo Thần Thức thì tới Kết Đan nó thành cộng vài nghìn phần trăm.
+      // Cảnh giới mở chiêu (hậu kỳ Luyện Khí) so với Kết Đan là chênh 8 lần
+      // thần thức, nên nếu có nhân theo thần thức thì hai số này không thể bằng.
+      const MO_CHIEU: RealmPosition = { major: REALM.LUYEN_KHI, tier: 9 }
+      caster.tryCast('giaYThanCong', HIGH, 999, ctx)
+      runCast(caster, ctx)
+      const cao = me.effects.find('giaY')!.magnitude
+
+      const thapNguoi = makeCombatant('player', 0, 0, MO_CHIEU)
+      const thap = new SkillCaster(thapNguoi, bus)
+      thap.tryCast('giaYThanCong', MO_CHIEU, 999, ctx)
+      runCast(thap, ctx)
+
+      expect(thapNguoi.stats.thanThuc).toBeLessThan(me.stats.thanThuc / 4)
+      expect(thapNguoi.effects.find('giaY')!.magnitude).toBe(cao)
+    })
+
+    it('Thực Kim Trùng gieo độc mạnh theo CÔNG, không phải một hằng số', () => {
+      const slot = 'thucKimTrung'
+      const action = skillDef(slot).action
+      if (action.type !== 'phapVuc' || !action.onHit) throw new Error('sai loại chiêu')
+      const foe = makeCombatant('enemy', 0, 5)
+      world.add(foe)
+      world.rebuildIndex()
+
+      caster.tryCast(slot, HIGH, 999, { ...ctx, cursorX: 0, cursorZ: 5 })
+      runCast(caster, { ...ctx, cursorX: 0, cursorZ: 5 })
+
+      const doc = foe.effects.find('trungDoc')
+      expect(doc).toBeDefined()
+      const mong = Math.round(
+        action.onHit.magnitude + me.stats.cong * (action.onHit.magnitudeFromCong ?? 0),
+      )
+      expect(doc!.magnitude).toBe(mong)
+      // Và phần suy từ công phải là phần LỚN, nếu không thì nó vẫn là hằng số
+      expect(mong).toBeGreaterThan(action.onHit.magnitude * 2)
+    })
+
+    it('Đại Diễn Quyết làm Kim Quang Thuẫn mạnh thêm 50%', () => {
+      const shieldSlot = 'kimQuangThuan'
+      caster.tryCast(shieldSlot, HIGH, 999, ctx)
+      runCast(caster, ctx)
+      const thuong = me.effects.find('khien')!.magnitude
+      me.effects.clear()
+
+      const boost = new SkillCaster(me, bus)
+      boost.tryCast('daiDienQuyet', HIGH, 999, ctx)
+      runCast(boost, ctx)
+      const daiDien = me.effects.find('daiDien')!.magnitude
+      boost.tryCast(shieldSlot, HIGH, 999, ctx)
+      runCast(boost, ctx)
+
+      expect(me.effects.find('khien')!.magnitude).toBe(Math.round(thuong * (1 + daiDien)))
+    })
+  })
+
   describe('phi hành khí', () => {
     it('Ngự Kiếm Thuật bắn ra một viên', () => {
       expect(projectiles.activeCount).toBe(0)
-      caster.tryCast(slotOf('nguKiem'), HIGH, 999, ctx)
+      caster.tryCast('nguKiem', HIGH, 999, ctx)
       runCast(caster, ctx, 0.3)
       expect(projectiles.activeCount).toBe(1)
     })
   })
 
   it('reset() xoá hết hồi chiêu và trạng thái lướt', () => {
-    caster.tryCast(slotOf('nguKiem'), HIGH, 999, ctx)
+    caster.tryCast('nguKiem', HIGH, 999, ctx)
     caster.reset()
-    expect(caster.cooldownLeft(slotOf('nguKiem'))).toBe(0)
+    expect(caster.cooldownLeft('nguKiem')).toBe(0)
     expect(caster.isCasting).toBe(false)
     expect(caster.dash.active).toBe(false)
   })

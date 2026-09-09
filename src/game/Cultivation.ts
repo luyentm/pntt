@@ -1,7 +1,7 @@
 import type { Rng } from '@/core/Rng'
 import { itemDef } from './data/items'
 import {
-  MAJOR_REALMS,
+  PLAYABLE_MAJOR_CAP,
   REALM,
   realmName,
   realmPower,
@@ -195,7 +195,9 @@ export class Cultivation {
   canBreakthrough(inventory: Inventory, trialBonus = 0): BreakthroughCheck {
     const chance = this.successChance(trialBonus)
 
-    if (this.realm.major >= MAJOR_REALMS.length - 1) {
+    // Trần của LƯỢT CHƠI, không phải trần của thang: thang còn Nguyên Anh cho
+    // Luyện Kiếm Đài, nhưng lượt chơi dừng ở Kết Đan
+    if (this.realm.major >= PLAYABLE_MAJOR_CAP) {
       return { ok: false, block: 'daToiDinh', chance }
     }
     if (!this.atCap) {

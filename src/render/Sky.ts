@@ -50,6 +50,14 @@ void main() {
 
 export interface Sky {
   mesh: Mesh
+  /**
+   * Sương mù của bộ mặc định.
+   *
+   * Công khai vì `scene.fog` KHÔNG phải chỗ đáng tin để đọc lại: bộ stylized
+   * thay nó bằng một `FogExp2` (mật độ, không có near/far), nên ai đọc
+   * `scene.fog` rồi ép kiểu về `Fog` sẽ nhận `undefined` lúc bộ đó đang bật.
+   */
+  fog: Fog
   setSunDir: (dir: Vector3) => void
   setColors: (top: number, horizon: number, bottom: number) => void
   dispose: () => void
@@ -95,10 +103,12 @@ export function createSky(scene: Scene, sunDir: Vector3): Sky {
   // Và màu sương phải ĐẬM hơn màu trời ở chân trời. Sương sáng bằng trời thì địa
   // hình xa lẫn hẳn vào nền thành một dải sữa; sương đậm hơn thì rừng xa hiện lên
   // thành từng lớp bóng — đúng cái chất "núi non trùng điệp" của sơn môn.
-  scene.fog = new Fog(Palette.suongSau, 44, 165)
+  const fog = new Fog(Palette.suongSau, 44, 165)
+  scene.fog = fog
 
   return {
     mesh,
+    fog,
     setSunDir(dir) {
       ;(material.uniforms.uSunDir!.value as Vector3).copy(dir)
     },
@@ -107,8 +117,12 @@ export function createSky(scene: Scene, sunDir: Vector3): Sky {
       ;(material.uniforms.uHorizon!.value as Color).set(horizon)
       ;(material.uniforms.uBottom!.value as Color).set(bottom)
       // Sương lấy màu chân trời rồi LÀM ĐẬM: bằng đúng màu trời thì địa hình xa
-      // lẫn hẳn vào nền thành một dải sữa
-      if (scene.fog) (scene.fog as Fog).color.set(horizon).multiplyScalar(0.78)
+      // lẫn hẳn vào nền thành một dải sữa.
+      //
+      // Ghi vào `fog` của mình, không vào `scene.fog`: khi bộ stylized đang bật
+      // thì `scene.fog` là sương của NÓ, và ghi màu chân trời vào đó sẽ đè mất
+      // màu sương đã tinh chỉnh riêng cho bộ đó.
+      fog.color.set(horizon).multiplyScalar(0.78)
     },
     dispose() {
       scene.remove(mesh)

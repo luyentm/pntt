@@ -8,7 +8,7 @@
 const HINTS: ReadonlyArray<[string, string]> = [
   ['WASD', 'di chuyển'],
   ['Chuột / J', 'đánh'],
-  ['1…7', 'pháp thuật'],
+  ['1…0', 'pháp thuật'],
   ['Space', 'ngự kiếm (Trúc Cơ)'],
   ['F', 'toạ thiền'],
   ['G', 'uống Tiểu Bình'],

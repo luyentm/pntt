@@ -1,25 +1,35 @@
 import type { EventBus } from '@/core/EventBus'
 import type { GameEvents } from '@/core/events'
+import { nextForSlot, slotKeyLabel, SLOT_COUNT } from '@/game/Loadout'
 import { realmName, type RealmPosition } from '@/game/data/realms'
-import { SKILLS } from '@/game/data/skills'
+import type { SkillDef } from '@/game/data/skills'
 import type { SkillCaster } from '@/world/SkillCaster'
 
 interface SlotEls {
   root: HTMLDivElement
   cooldown: HTMLDivElement
+  glyph: HTMLDivElement
+  cost: HTMLDivElement
   label: HTMLSpanElement
 }
 
 /**
- * Thanh pháp thuật: 6 ô, hiện hồi chiêu, giá linh lực, và ô nào CHƯA MỞ.
+ * Thanh pháp thuật: một ô mỗi phím, hiện hồi chiêu, giá linh lực, và ô nào CHƯA MỞ.
  *
- * Hiện luôn cả ô chưa mở kèm cảnh giới cần thiết, thay vì ẩn đi: người chơi phải
- * thấy trước mình sẽ được gì khi đột phá — đó chính là động lực tu luyện, mà ẩn
- * đi thì phần thưởng thành ra một điều ngạc nhiên mà không ai chờ đợi.
+ * Mười ô CỐ ĐỊNH, không phải một ô cho mỗi chiêu trong bảng: bảng có 17 chiêu
+ * còn hàng phím chỉ có mười. Ô nào giữ chiêu nào là việc của `Loadout`, và ô
+ * trống thì hiện chiêu SẼ tới cùng cảnh giới cần thiết — người chơi phải thấy
+ * trước mình được gì khi đột phá, vì đó chính là động lực tu luyện; ẩn đi thì
+ * phần thưởng thành một điều ngạc nhiên mà không ai chờ đợi.
+ *
+ * Nội dung ô (chữ, giá, tên) được ghi lại mỗi lần ĐỔI, không phải mỗi khung:
+ * cùng một ô đổi chiêu khi đột phá, nên nó không dựng một lần lúc khởi tạo được
+ * nữa — mà ghi DOM 60 lần mỗi giây cho mười ô thì phí không có lý do.
  */
 export class SkillBar {
   private readonly root: HTMLDivElement
   private readonly slots: SlotEls[] = []
+  private readonly shown: Array<string | null> = new Array(SLOT_COUNT).fill(null)
   private readonly toast: HTMLDivElement
   private toastTimer = 0
   private readonly unsubscribe: Array<() => void> = []
@@ -29,23 +39,25 @@ export class SkillBar {
     this.root.className = 'skillbar'
     container.appendChild(this.root)
 
-    SKILLS.forEach((def, i) => {
+    for (let i = 0; i < SLOT_COUNT; i++) {
       const slot = document.createElement('div')
       slot.className = 'skill'
       slot.innerHTML = `
         <div class="skill-cd" data-role="cd"></div>
-        <div class="skill-glyph">${def.glyph}</div>
-        <div class="skill-key">${i + 1}</div>
-        <div class="skill-cost">${def.linhLucCost}</div>
+        <div class="skill-glyph" data-role="glyph"></div>
+        <div class="skill-key">${slotKeyLabel(i)}</div>
+        <div class="skill-cost" data-role="cost"></div>
         <span class="skill-tip" data-role="label"></span>
       `
       this.root.appendChild(slot)
       this.slots.push({
         root: slot,
         cooldown: slot.querySelector('[data-role="cd"]') as HTMLDivElement,
+        glyph: slot.querySelector('[data-role="glyph"]') as HTMLDivElement,
+        cost: slot.querySelector('[data-role="cost"]') as HTMLDivElement,
         label: slot.querySelector('[data-role="label"]') as HTMLSpanElement,
       })
-    })
+    }
 
     this.toast = document.createElement('div')
     this.toast.className = 'skill-toast'
@@ -63,32 +75,51 @@ export class SkillBar {
     this.toastTimer = 1.8
   }
 
-  update(dt: number, caster: SkillCaster, realm: RealmPosition, linhLuc: number): void {
+  update(
+    dt: number,
+    caster: SkillCaster,
+    realm: RealmPosition,
+    linhLuc: number,
+    loadout: ReadonlyArray<SkillDef | null>,
+  ): void {
     if (this.toastTimer > 0) {
       this.toastTimer -= dt
       if (this.toastTimer <= 0) this.toast.classList.remove('is-visible')
     }
 
-    SKILLS.forEach((def, i) => {
+    for (let i = 0; i < SLOT_COUNT; i++) {
       const el = this.slots[i]
-      if (!el) return
+      if (!el) continue
+      const def = loadout[i] ?? null
+      // Ô chưa mở: hiện chiêu sắp tới ở dạng mờ, kèm cảnh giới phải đạt
+      const preview = def ? null : nextForSlot(i, realm)
+      const show = def ?? preview
 
-      const unlocked = caster.isUnlocked(i, realm)
-      const cdFraction = caster.cooldownFraction(i)
-      const affordable = linhLuc >= def.linhLucCost
+      // Chỉ ghi DOM khi chiêu trong ô thật sự đổi
+      const key = show ? show.id : ''
+      if (this.shown[i] !== key) {
+        this.shown[i] = key
+        el.glyph.textContent = show?.glyph ?? ''
+        el.cost.textContent = show ? String(show.linhLucCost) : ''
+        el.label.textContent = !show
+          ? ''
+          : def
+            ? def.name
+            : `${show.name} — cần ${realmName(show.requiredRealm)}`
+      }
 
-      el.root.classList.toggle('is-locked', !unlocked)
+      const cdFraction = def ? caster.cooldownFraction(def.id) : 0
+      const affordable = def ? linhLuc >= def.linhLucCost : false
+
+      el.root.classList.toggle('is-empty', !show)
+      el.root.classList.toggle('is-locked', !def)
       el.root.classList.toggle('is-cooling', cdFraction > 0)
-      el.root.classList.toggle('is-poor', unlocked && cdFraction === 0 && !affordable)
-      el.root.classList.toggle('is-active', caster.activeSlot === i)
+      el.root.classList.toggle('is-poor', !!def && cdFraction === 0 && !affordable)
+      el.root.classList.toggle('is-active', !!def && caster.activeId === def.id)
 
       // Lớp phủ hồi chiêu quét từ dưới lên — đọc được tiến độ bằng mắt ngoại vi
       el.cooldown.style.height = `${(cdFraction * 100).toFixed(1)}%`
-
-      el.label.textContent = unlocked
-        ? def.name
-        : `${def.name} — cần ${realmName(def.requiredRealm)}`
-    })
+    }
   }
 
   dispose(): void {

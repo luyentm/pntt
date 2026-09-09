@@ -56,10 +56,15 @@ scene.storage = storage
 // Nạp màn TRƯỚC khi dựng bảng debug: bảng đọc hook debug của màn lúc khởi tạo,
 // nên nếu dựng trước thì nhóm điều khiển chiến đấu sẽ không xuất hiện
 await game.setScene(scene)
-// Bộ môi trường stylized/fantasy — bật/tắt trong bảng debug để so sánh trực
-// tiếp với bộ mặc định trên cùng một cảnh
+// Bộ môi trường stylized/fantasy — BẬT SẴN, tắt được trong bảng debug để so
+// sánh trực tiếp với bộ mặc định trên cùng một cảnh.
+//
+// Vị trí đèn lạnh do màn cấp: nó là nơi biết bốn cột đá đứng đâu. Bật ở đây,
+// sau `setScene` và TRƯỚC `DebugPanel`, để ô tick trong bảng debug đọc được
+// trạng thái thật ngay lúc dựng.
 const stylized = new StylizedToggle(game)
 game.stylized = stylized
+stylized.enable(scene.coolSpots)
 const debug = new DebugPanel(game)
 const sfx = new Sfx(game.bus, settings.sfxVolume)
 
@@ -69,6 +74,10 @@ function applySettings(next: Settings): void {
   game.renderer.resolutionScale = next.resolutionScale
   game.lighting.shadowsEnabled = next.shadows
   game.composer.enabled = next.postFx
+  // Bộ stylized có đèn và chuỗi pass riêng, nên hai dòng trên không chạm tới nó
+  // — không nối lại thì hai công tắc này im lặng mất tác dụng khi bộ đang bật
+  stylized.shadowsEnabled = next.shadows
+  stylized.postFxEnabled = next.postFx
   game.loop.fpsCap = next.fpsCap
   sfx.setVolume(next.sfxVolume)
   saveSettings(storage, next)

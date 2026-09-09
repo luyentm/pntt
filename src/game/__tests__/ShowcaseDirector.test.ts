@@ -1,27 +1,30 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { SKILLS } from '../data/skills'
-import { SHOWCASE, SHOWCASE_COUNT } from '../data/showcase'
+import { realmOrdinal, type RealmPosition } from '../data/realms'
+import { hasSkill, SKILLS } from '../data/skills'
+import { SHOWCASE, SHOWCASE_COUNT, stepTitle } from '../data/showcase'
 import { ShowcaseDirector, type ShowcaseActions } from '../ShowcaseDirector'
 
 function recorder(): ShowcaseActions & {
-  casts: number[]
+  casts: string[]
   melees: number
   flight: boolean[]
   meditate: boolean[]
   breakthroughs: number
-  dummies: number
+  targets: number
+  realms: RealmPosition[]
   announced: Array<{ title: string; index: number }>
 } {
   const r = {
-    casts: [] as number[],
+    casts: [] as string[],
     melees: 0,
     flight: [] as boolean[],
     meditate: [] as boolean[],
     breakthroughs: 0,
-    dummies: 0,
+    targets: 0,
+    realms: [] as RealmPosition[],
     announced: [] as Array<{ title: string; index: number }>,
-    cast(slot: number) {
-      r.casts.push(slot)
+    cast(id: string) {
+      r.casts.push(id)
     },
     melee() {
       r.melees++
@@ -35,11 +38,14 @@ function recorder(): ShowcaseActions & {
     breakthroughFx() {
       r.breakthroughs++
     },
-    refreshDummies() {
-      r.dummies++
+    refreshTargets() {
+      r.targets++
     },
-    announce(step: { title: string }, index: number) {
-      r.announced.push({ title: step.title, index })
+    setRealm(realm: RealmPosition) {
+      r.realms.push(realm)
+    },
+    announce(step: Parameters<ShowcaseActions['announce']>[0], index: number) {
+      r.announced.push({ title: stepTitle(step), index })
     },
   }
   return r
@@ -59,23 +65,46 @@ describe('ShowcaseDirector', () => {
   }
 
   describe('bảng kịch bản', () => {
-    it('mọi ô chiêu trong kịch bản đều có thật', () => {
+    it('mọi chiêu trong kịch bản đều có thật', () => {
       for (const step of SHOWCASE) {
         if (step.action.kind !== 'skill') continue
-        expect(SKILLS[step.action.slot], step.title).toBeDefined()
+        expect(hasSkill(step.action.id), stepTitle(step)).toBe(true)
       }
     })
 
-    it('kịch bản diễn ĐỦ cả 7 chiêu, không sót ô nào', () => {
+    it('kịch bản diễn ĐỦ mọi chiêu trong bảng, không sót chiêu nào', () => {
       // Chế độ này tồn tại để show thần thông — sót một chiêu là sót đúng thứ
-      // người chơi vào đây để xem
+      // người chơi vào đây để xem. Kiểm theo ID nên thêm chiêu mà quên thêm
+      // bước trình diễn là đỏ ngay, không âm thầm biến mất.
       const shown = new Set(
-        SHOWCASE.filter((s) => s.action.kind === 'skill').map((s) =>
-          s.action.kind === 'skill' ? s.action.slot : -1,
-        ),
+        SHOWCASE.flatMap((s) => (s.action.kind === 'skill' ? [s.action.id] : [])),
       )
-      expect(shown.size).toBe(SKILLS.length)
-      for (let i = 0; i < SKILLS.length; i++) expect(shown.has(i), SKILLS[i]!.name).toBe(true)
+      for (const def of SKILLS) expect(shown.has(def.id), def.name).toBe(true)
+    })
+
+    it('mỗi bước diễn ở cảnh giới ĐỦ CAO để chiêu đó mở được', () => {
+      // Diễn một chiêu Nguyên Anh ở thân Kết Đan thì `tryCast` từ chối im lặng,
+      // và bước đó thành một thẻ chữ với sân trống — không có gì báo lỗi
+      for (const step of SHOWCASE) {
+        if (step.action.kind !== 'skill') continue
+        const id = step.action.id
+        const skill = SKILLS.find((d) => d.id === id)!
+        expect(
+          realmOrdinal(step.realm) >= realmOrdinal(skill.requiredRealm),
+          `${skill.name} diễn ở cảnh giới quá thấp`,
+        ).toBe(true)
+      }
+    })
+
+    it('các chương đi theo thứ tự cảnh giới, không nhảy lùi', () => {
+      let prev = -1
+      const seen = new Set<string>()
+      for (const step of SHOWCASE) {
+        if (seen.has(step.chapter)) continue
+        seen.add(step.chapter)
+        expect(step.realm.major, step.chapter).toBeGreaterThan(prev)
+        prev = step.realm.major
+      }
     })
 
     it('có cả ba năng lực ngoài thanh pháp thuật', () => {
@@ -87,8 +116,8 @@ describe('ShowcaseDirector', () => {
 
     it('mỗi bước đủ dài để đọc chú thích', () => {
       for (const step of SHOWCASE) {
-        expect(step.duration, step.title).toBeGreaterThan(2)
-        expect(step.note.length, step.title).toBeGreaterThan(10)
+        expect(step.duration, stepTitle(step)).toBeGreaterThan(2)
+        expect(step.note.length, stepTitle(step)).toBeGreaterThan(10)
       }
     })
   })
@@ -104,7 +133,7 @@ describe('ShowcaseDirector', () => {
     // Chữ và chiêu nổ cùng lúc thì mắt bị chia hai chỗ, không đọc được cái nào
     const a = recorder()
     d.start(a)
-    expect(a.announced).toEqual([{ title: SHOWCASE[0]!.title, index: 0 }])
+    expect(a.announced).toEqual([{ title: stepTitle(SHOWCASE[0]!), index: 0 }])
     run(a, 0.5)
     expect(a.melees).toBe(0)
     run(a, 0.6)
@@ -125,7 +154,7 @@ describe('ShowcaseDirector', () => {
     d.start(a)
     run(a, SHOWCASE[0]!.duration + 0.1)
     expect(d.index).toBe(1)
-    expect(a.announced.at(-1)).toEqual({ title: SHOWCASE[1]!.title, index: 1 })
+    expect(a.announced.at(-1)).toEqual({ title: stepTitle(SHOWCASE[1]!), index: 1 })
   })
 
   it('TẮT trạng thái kéo dài khi rời bước', () => {
@@ -152,12 +181,29 @@ describe('ShowcaseDirector', () => {
     expect(a.meditate.at(-1)).toBe(false)
   })
 
-  it('bước nào có cờ thì dựng lại bia đỡ', () => {
+  it('bước nào có cờ thì dựng lại bia tập', () => {
     const a = recorder()
-    const withDummies = SHOWCASE.filter((s) => s.refreshDummies).length
+    const withTargets = SHOWCASE.filter((s) => s.refreshTargets).length
     d.start(a)
     for (const step of SHOWCASE) run(a, step.duration + 0.05)
-    expect(a.dummies).toBeGreaterThanOrEqual(withDummies)
+    expect(a.targets).toBeGreaterThanOrEqual(withTargets)
+  })
+
+  it('đặt cảnh giới TRƯỚC khi dựng bia ở mỗi bước', () => {
+    // Máu bia suy từ cảnh giới người chơi: dựng trước rồi mới nâng cảnh giới
+    // thì cả vòng bia mỏng đi một bậc và chết ngay nhịp quét đầu
+    const order: string[] = []
+    const a = recorder()
+    const spy: ShowcaseActions = {
+      ...a,
+      setRealm: () => order.push('realm'),
+      refreshTargets: () => order.push('targets'),
+    }
+    d.jumpTo(
+      SHOWCASE.findIndex((s) => s.refreshTargets),
+      spy,
+    )
+    expect(order).toEqual(['realm', 'targets'])
   })
 
   it('chạy hết kịch bản rồi quay lại bước đầu', () => {

@@ -46,7 +46,6 @@ export type GameEvents = {
    */
   'skill:cast': {
     id: string
-    slot: number
     side: 'player' | 'ally' | 'enemy'
     x: number
     y: number
@@ -65,6 +64,8 @@ export type GameEvents = {
   }
   /** Khiên/buff được dựng lên. */
   'skill:buff': {
+    /** Id chiêu — VFX tra màu vệt theo nó, y như `skill:cast` và `skill:area`. */
+    id: string
     x: number
     y: number
     z: number
