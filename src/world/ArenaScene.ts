@@ -31,6 +31,7 @@ import { Agent, type AgentContext } from './Agent'
 import type { Combatant, Side } from './Combatant'
 import { Palette } from '@/art/Palette'
 import { PropBatch } from '@/art/PropBatch'
+import { buildSectHall } from '@/art/props/buildings'
 import { buildBoulder, buildGroundMarker, buildStoneFloor, buildTargetMarker } from '@/art/props/nature'
 import { bambooGeometry, pineGeometry, rockGeometry } from '@/art/props/geometries'
 import {
@@ -141,6 +142,14 @@ export class ArenaScene implements GameScene {
   /** Còn bấy nhiêu giây nữa thì tự lưu. */
   private autoSaveTimer = AUTO_SAVE_SECONDS
   private ambientTimer = AMBIENT_RESPAWN
+  /**
+   * Hình chữ nhật giữ trống cho con phố: `[xNua, zMin, zMax]`.
+   *
+   * Cây cối tránh được NHÀ nhờ va chạm tĩnh, nhưng không tránh được LỐI ĐI —
+   * và một cây tùng mọc giữa phố, ngay trước cửa chính điện, làm cả trục nhìn
+   * mất ý nghĩa.
+   */
+  private streetKeepClear: [number, number, number] | null = null
   private crowd!: Crowd
   private showcasePanel!: ShowcasePanel
   private readonly showcaseActions: ShowcaseActions = {
@@ -289,6 +298,7 @@ export class ArenaScene implements GameScene {
     this.add(buildStoneFloor(FLOOR_RADIUS))
 
     this.placeArchitecture(rng)
+    this.placeBuildings(rng)
     this.placeVegetation(rng)
 
     this.player = new Player()
@@ -1084,6 +1094,127 @@ export class ArenaScene implements GameScene {
     this.add(courtyard)
   }
 
+  /**
+   * Dãy nhà Thất Huyền Môn — một con phố dẫn từ cổng phái vào trong sơn môn.
+   *
+   * Đặt ở phía +Z, tức BÊN NGOÀI cổng phái nhìn từ sân đấu, vì ba lý do:
+   *  - Vòng sinh quái của đợt là 13–30, còn lớp quân hậu cảnh ở phía −X. Đặt
+   *    nhà vào hai vùng đó thì hoặc nhà chắn mất trận đánh, hoặc quái sinh ra
+   *    trong nhà.
+   *  - Từ trong sân nhìn ra cổng là thấy cả dãy nhà phía sau nó — sơn môn có
+   *    chiều sâu thay vì chỉ là một cái cổng đứng trơ trọi.
+   *  - Người chơi hồi sinh ở cổng, nên dãy nhà là thứ đầu tiên họ thấy.
+   *
+   * Cao độ lấy theo góc CAO NHẤT của móng, không lấy tâm: địa hình ngoài bán
+   * kính 11 đã gợn, và lấy tâm thì góc cao của nhà lún vào đất. Lấy góc cao
+   * nhất thì có thể hở chân ở góc thấp, và cái móng đá dày 0.46 che đúng khe đó.
+   */
+  private placeBuildings(rng: SceneContext['rng']): void {
+    const material = materials.flat(0xffffff, { vertexColors: true })
+
+    /** Cao độ đặt nhà: đỉnh cao nhất trong bốn góc móng. */
+    const seatY = (x: number, z: number, w: number, d: number): number => {
+      let top = -Infinity
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          top = Math.max(top, this.groundAt(x + (sx * w) / 2, z + (sz * d) / 2))
+        }
+      }
+      return top
+    }
+
+    /**
+     * Ba biến thể, mỗi biến thể một `PropBatch`.
+     *
+     * Nhà có hàng chục khối màu nên nó là ứng viên tốt nhất cho instancing:
+     * 12 căn với 3 biến thể vẫn là 3 draw call cho phần thân. Đổi lại mọi căn
+     * cùng biến thể giống nhau y hệt, nên bù bằng góc xoay và tỉ lệ.
+     */
+    const variants = [
+      { params: { width: 3.6, depth: 3.0, height: 2.2 }, batch: null as PropBatch | null },
+      { params: { width: 4.4, depth: 3.4, height: 2.6, upper: true }, batch: null as PropBatch | null },
+      { params: { width: 5.6, depth: 4.2, height: 3.0, upper: true }, batch: null as PropBatch | null },
+    ]
+    // Cửa sổ phát sáng phải là mesh riêng với material glow, nên mỗi biến thể
+    // cần hai batch — một cho thân, một cho ô cửa sổ
+    const bodies: PropBatch[] = []
+    const windows: PropBatch[] = []
+    for (const [i, v] of variants.entries()) {
+      const proto = buildSectHall(v.params)
+      const body = proto.children[0] as Mesh
+      const glow = proto.children[1] as Mesh
+      bodies.push(new PropBatch(body.geometry as BufferGeometry, material, `hall${i}`))
+      windows.push(
+        new PropBatch(glow.geometry as BufferGeometry, glow.material as never, `hallWin${i}`),
+      )
+      v.batch = bodies[i] as PropBatch
+    }
+
+    /** Đặt một căn: chọn biến thể, ghim cao độ, thêm va chạm. */
+    const place = (x: number, z: number, variant: number, rotY: number): void => {
+      const v = variants[variant]
+      if (!v) return
+      const { width, depth } = v.params
+      const scale = rng.float(0.94, 1.08)
+      // Hoán chiều rộng/sâu khi nhà quay 90° để bao va chạm vẫn đúng
+      const turned = Math.abs(Math.sin(rotY)) > 0.5
+      const footW = (turned ? depth : width) * scale
+      const footD = (turned ? width : depth) * scale
+      const y = seatY(x, z, footW, footD)
+
+      ;(bodies[variant] as PropBatch).add(x, y, z, rotY, scale)
+      ;(windows[variant] as PropBatch).add(x, y, z, rotY, scale)
+
+      // Va chạm: một hình tròn không bao nổi một cái nhà hình chữ nhật, nên rải
+      // vài hình tròn dọc theo chiều dài. Bán kính lấy theo chiều NGẮN để không
+      // chặn rộng hơn thực tế.
+      const r = Math.min(footW, footD) * 0.5
+      const span = Math.max(footW, footD) - r * 2
+      const steps = Math.max(1, Math.round(span / r) + 1)
+      for (let i = 0; i < steps; i++) {
+        const t = steps === 1 ? 0 : (i / (steps - 1) - 0.5) * span
+        const cx = turned ? x : x + t
+        const cz = turned ? z + t : z
+        this.collision.addStatic(cx, cz, r)
+      }
+    }
+
+    // Hai dãy đối diện nhau, chừa lối đi giữa — đó là thứ làm nó thành "phố"
+    // chứ không phải mấy cái nhà rải rác
+    const streetHalf = 6.4
+    let z = GATE_DISTANCE + 6
+    let variant = 0
+    while (z < GATE_DISTANCE + 24) {
+      const step = 5.6 + rng.float(0, 1.4)
+      // Nhà hai bên phố quay mặt VÀO lối đi
+      place(-streetHalf - rng.float(0, 0.8), z, variant % 3, Math.PI * 0.5)
+      place(streetHalf + rng.float(0, 0.8), z + rng.float(-1.4, 1.4), (variant + 2) % 3, -Math.PI * 0.5)
+      z += step
+      variant++
+    }
+
+    // Chính điện ở cuối phố, quay mặt về cổng — điểm nhìn cuối của trục chính
+    place(0, GATE_DISTANCE + 27, 2, Math.PI)
+
+    // Đèn phố: hai nguồn sáng ấm dọc lối đi.
+    //
+    // Cần thật, không phải trang trí: cả dãy nhà nằm ngoài mọi nguồn sáng điểm
+    // nên nó tối đến mức chỉ còn đọc được mấy ô cửa sổ sáng. Ánh sáng ấm ở đây
+    // cũng đúng chất phố sơn môn về chiều trong ảnh mẫu.
+    for (const lz of [GATE_DISTANCE + 9, GATE_DISTANCE + 19]) {
+      const lamp = new PointLight(Palette.luaDan, 3.2, 14, 2)
+      lamp.position.set(0, this.groundAt(0, lz) + 2.6, lz)
+      this.add(lamp)
+    }
+
+    this.streetKeepClear = [5.6, GATE_DISTANCE + 2, GATE_DISTANCE + 30]
+
+    for (const batch of [...bodies, ...windows]) {
+      const mesh = batch.build()
+      if (mesh) this.add(mesh)
+    }
+  }
+
   private placeVegetation(rng: SceneContext['rng']): void {
     const propMaterial = materials.flat(0xffffff, { vertexColors: true })
 
@@ -1131,6 +1262,7 @@ export class ArenaScene implements GameScene {
       const x = groveX + off.x
       const z = groveZ + off.z
       if (Math.hypot(x, z) < 14) continue
+      if (this.inStreet(x, z)) continue
       const batch = bambooBatches[i % 3] as PropBatch
       batch.add(x, this.groundAt(x, z), z, rng.float(0, Math.PI * 2), rng.float(0.7, 1.1), rng.float(2.6, 4.4))
       // Tre mảnh và mọc dày: cho đi xuyên qua, chặn thì khóm tre thành bức tường
@@ -1146,6 +1278,8 @@ export class ArenaScene implements GameScene {
       const blocking = radius > 0.55
       const spot = blocking ? this.tryPlace(rng, 10, 64, radius * 0.85) : rng.inAnnulus(10, 64)
       if (!spot) continue
+      // Đá nhỏ không đi qua tryPlace nên phải tự chặn lối đi ở đây
+      if (this.inStreet(spot.x, spot.z)) continue
       const batch = rockBatches[i % 3] as PropBatch
       batch.add(spot.x, this.groundAt(spot.x, spot.z), spot.z, rng.float(0, Math.PI * 2), radius)
       if (blocking) this.collision.addStatic(spot.x, spot.z, radius * 0.85)
@@ -1175,9 +1309,18 @@ export class ArenaScene implements GameScene {
     for (let i = 0; i < attempts; i++) {
       const p = rng.inAnnulus(rMin, rMax)
       if (!this.terrain.isWalkable(p.x, p.z)) continue
+      if (this.inStreet(p.x, p.z)) continue
       if (this.collision.query(p.x, p.z, radius + MIN_PASSAGE, found) === 0) return p
     }
     return null
+  }
+
+  /** Điểm này có nằm trong lối đi cần giữ trống hay không. */
+  private inStreet(x: number, z: number): boolean {
+    const zone = this.streetKeepClear
+    if (!zone) return false
+    const [halfX, zMin, zMax] = zone
+    return Math.abs(x) <= halfX && z >= zMin && z <= zMax
   }
 
   private add(obj: Object3D): void {

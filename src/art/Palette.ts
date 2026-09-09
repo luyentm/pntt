@@ -65,6 +65,29 @@ export const Palette = {
   suongMu: 0x9fb2be,
   nangSom: 0xffe8c2,
 
+  // --- Kiến trúc Thất Huyền Môn ---
+  /** Ngói lưu ly xanh lục — màu định danh của mái sơn môn. */
+  ngoi: 0x3d8f7a,
+  ngoiDam: 0x2b6a5b,
+  ngoiNhat: 0x5fae99,
+  /** Diềm mái và đầu ngói. */
+  diemMai: 0xa8cfc0,
+  /** Cột và khung cửa sơn đỏ. */
+  cotDo: 0xb03a2e,
+  cotDoDam: 0x8a2a20,
+  /** Vách tường — hồng đất ấm, không phải trắng. */
+  vach: 0xc07a68,
+  vachDam: 0x9c5a4c,
+  /** Đấu củng dưới mái, sơn lam. */
+  dauCung: 0x3d5fa8,
+  dauCungDam: 0x2a4480,
+  /** Bậc thềm và móng đá. */
+  themDa: 0xcfc6ac,
+  /** Cửa sổ giấy, sáng đèn từ trong. */
+  cuaSo: 0xe8b158,
+  /** Cánh cửa gỗ. */
+  cuaGo: 0x6b4630,
+
   // --- Ánh sáng ---
   /** Nắng chính: vàng ấm, hơi ngả kim. */
   nangKim: 0xffdca6,

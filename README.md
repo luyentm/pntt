@@ -223,6 +223,47 @@ Những chỗ đã mất thời gian mò ra, ghi lại để không phải mò l
   thẳng vào DOM, chạy mỗi khung là 120 lượt cập nhật DOM mỗi giây chỉ để đổi vài con
   số mà mắt không đọc nổi.
 
+### Dãy nhà Thất Huyền Môn
+
+Nhà sinh bằng code từ khối cơ bản + vertex color như mọi prop khác — không một file
+model nào. Ngói lưu ly xanh lục, cột sơn đỏ, vách hồng đất, đấu củng sơn lam.
+
+- **Mái là một ĐƯỜNG CONG thật**, không phải hai tấm phẳng. Mặt cắt `u^1.45` cho dốc
+  gắt ở sống nóc và thoải dần xuống diềm, cộng một đoạn vểnh lên ở 22% cuối. Dùng `u`
+  tuyến tính thì ra mái nhà kho, mất hẳn nét kiến trúc — mà mái cong có đầu vểnh chính
+  là điểm nhận diện duy nhất người chơi đọc được ở khoảng cách iso.
+- Dấu trong `rotateX(atan2(-dy, dz))` của từng đốt mái rất dễ đặt sai, và kết quả là
+  mái gập ngược lên trời. Đã ghi lại phép suy ra ngay tại chỗ.
+- **Hàng ngói so le hai tông màu.** Ở cỡ này thì từng viên ngói không đọc được, nhưng
+  các HÀNG thì có — và so le màu là cách rẻ nhất để có hàng, thay vì dựng từng viên.
+  Đầu ngói ở mép diềm thì làm thật bằng nửa hình trụ: đó là chi tiết đọc rõ nhất.
+- **Thứ tự ưu tiên chi tiết chọn theo những gì ĐỌC ĐƯỢC ở ~20 unit**: mái cong trước,
+  rồi cột đỏ và đấu củng lam, rồi mới cửa và cửa sổ. Hoa văn trên vách thì không làm —
+  ở cỡ đó nó không chiếm nổi một pixel.
+- **Cửa sổ giấy là mesh RIÊNG** với material glow: nó phải bỏ qua tone mapping để bloom
+  bắt được, còn thân nhà thì nhận sáng bình thường. Hai yêu cầu đó không thể ở cùng một
+  material, nên mỗi biến thể nhà cần hai `PropBatch`.
+- **Móng đá dày 0.46 có lý do thật**: nó vừa là bậc thềm, vừa che khe hở khi nhà đặt
+  trên địa hình gợn. Cao độ lấy theo góc CAO NHẤT của móng chứ không theo tâm — lấy tâm
+  thì góc cao của nhà lún vào đất.
+- **Va chạm: nhiều hình tròn rải dọc chiều dài**, bán kính lấy theo chiều NGẮN để không
+  chặn rộng hơn thực tế. Một hình tròn không bao nổi một cái nhà hình chữ nhật. Đã kiểm:
+  đi từ trước vào chính điện bị chặn ở z = 39,7 (nhà ở z = 42), từ bên chặn ở x = 3, còn
+  đi dọc giữa phố thì thông. Đứng ĐÚNG tâm nhà thì không bị đẩy — hai lực đẩy đối xứng
+  triệt tiêu nhau, đúng tính chất đã ghi của bộ giải Jacobi, và không tới được bằng cách
+  đi bộ.
+- **Đặt ở phía +Z, bên ngoài cổng phái.** Vòng sinh quái của đợt là 13–30 và lớp quân
+  hậu cảnh ở phía −X; đặt nhà vào hai vùng đó thì hoặc nhà chắn mất trận đánh, hoặc quái
+  sinh ra trong nhà. Ở +Z thì từ sân nhìn ra cổng là thấy cả dãy phố phía sau, và người
+  chơi hồi sinh ở cổng nên đó là thứ đầu tiên họ thấy.
+- **Phải có vùng giữ trống cho lối đi.** Cây tránh được NHÀ nhờ va chạm tĩnh nhưng không
+  tránh được LỐI ĐI — một cây tùng mọc giữa phố ngay trước cửa chính điện làm cả trục
+  nhìn mất ý nghĩa. Khóm tre và đá nhỏ không đi qua `tryPlace` nên phải chặn riêng.
+- **Đèn phố là cần thật, không phải trang trí**: cả dãy nhà nằm ngoài mọi nguồn sáng
+  điểm nên nó tối đến mức chỉ còn đọc được mấy ô cửa sổ sáng.
+
+7 căn, 3 biến thể → **6 draw call** cho toàn bộ dãy phố (3 thân + 3 cửa sổ).
+
 ### Hệ hạt
 
 Hiệu ứng ban đầu chỉ có mảnh vỡ + vệt chém + vòng loang, nên bảy chiêu khác nhau nhìn
