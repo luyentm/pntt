@@ -32,9 +32,25 @@ export const Palette = {
   aoDeTu: 0x7794b8,
   aoDeTuDam: 0x4f6a8c,
   vienAo: 0xe3ddc9,
-  // Trang phục Hàn Lập
-  aoHanLap: 0x5f7ea6,
-  aoHanLapDam: 0x3d5675,
+  /**
+   * Trang phục Hàn Lập theo bản thiết kế nguyên mẫu: ÁO TRẮNG NGÀ VIỀN LAM.
+   *
+   * Trước đây Hàn Lập mặc lam đậm — cùng tông với đồng môn Thất Huyền Môn
+   * (`aoDeTu` 0x7794B8), chỉ khác một bậc độ sáng. Đứng giữa một đám đệ tử thì
+   * nhân vật người chơi lẫn hẳn vào nền, mà đó là thứ tệ nhất một game hành
+   * động có thể làm. Đảo ngược quan hệ sáng-tối (thân áo TRẮNG, viền LAM) tách
+   * hắn ra khỏi mọi thứ khác trên sân mà không cần một màu lạc lõng nào.
+   */
+  aoHanLap: 0xece8db,
+  aoHanLapDam: 0xcbc6b4,
+  /** Viền cổ, viền tay, gấu áo của Hàn Lập — lam trung, đủ đậm để cắt nền trắng. */
+  vienLamHanLap: 0x5588bb,
+  /** Đai lưng Hàn Lập — lam xám nhạt, giữa thân áo trắng và viền lam. */
+  daiLungHanLap: 0x9fb4c8,
+  /** Tóc Hàn Lập: đen ngả lam, không đen tuyệt đối — đen thuần nuốt hết facet. */
+  tocHanLap: 0x1b202a,
+  /** Hài Hàn Lập — thạch bản sẫm. */
+  hiaHanLap: 0x2b3038,
   daiLung: 0x8d6a3f,
 
   // Ma đạo — tím đen pha huyết

@@ -13,6 +13,11 @@ export const UPPER_BODY: readonly ChibiJoint[] = [
   'elbowL',
   'shoulderR',
   'elbowR',
+  // Bàn tay phải nằm trong mặt nạ thân trên, dù chưa clip nào xoay nó: pháp bảo
+  // treo vào khớp này, nên khi lớp phủ đòn đánh bỏ sót bàn tay thì cây quạt vẫn
+  // giữ thế của clip chân — tức nó lắc theo nhịp chạy trong lúc tay đang vung.
+  'handL',
+  'handR',
 ]
 
 /**

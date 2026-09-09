@@ -548,6 +548,116 @@ Ba thứ nhỏ phải sửa kèm, đều là dạng lỗi im lặng nếu bỏ q
   Thần Công mỗi vòng, mỗi lần đốt 18% máu, nên sau vài vòng thanh máu cạn tới đáy và người
   xem đọc ra là nhân vật đang chết dở.
 
+### Hàn Lập — bản dựng riêng, và khớp bàn tay
+
+Nhân vật người chơi **không** đi qua `buildChibi` nữa. Hắn có builder riêng
+(`art/characters/HanLap.ts`) và được phép tốn gấp nhiều lần tam giác.
+
+Lý do tách chứ không thêm cờ vào `buildChibi`: hàm đó tồn tại để dựng **hàng chục** đơn vị
+cùng lúc, nên ngân sách tam giác của nó là ngân sách của cả một đợt quái. Hàn Lập thì chỉ có
+**một** trên màn hình, luôn ở giữa khung, và là thứ người chơi nhìn suốt cả lượt chơi. Hai
+bài toán ngược nhau; nhồi cả hai vào một hàm sẽ kéo một trong hai về phía sai.
+
+Bản riêng bám bản thiết kế nguyên mẫu: mặt cầu **7×5 → 16×12**, mái chẻ giữa dựng từng lọn
+rời, hai lọn tóc mai buông quá cằm, **đuôi ngựa dài** bảy đốt có vòng kim ở gốc, đạo bào
+**trắng ngà** với giao lĩnh hai lớp (vạt ngoài trắng đè lên lớp lót lam), đai lưng có nút
+thắt và hai dải buông, ống tay loe mạnh viền lam, vạt dưới có sáu nếp gấp. Đo được: **9.398
+tam giác / 24 draw call** cho cả gian Đồ Giám, và **vẫn đúng MỘT draw call** cho nhân vật —
+rigid skinning không quan tâm có bao nhiêu khối, chỉ quan tâm mỗi khối thuộc xương nào.
+
+Bàn tay để **đơn giản là cố ý**, đúng như bản thiết kế ghi ("Simplified Hand Geometry"):
+ngón tay ở tỉ lệ chibi nhỏ hơn một pixel ở khoảng cách chơi, nên chúng chỉ làm bàn tay thành
+một đám nhiễu.
+
+#### Đổi màu áo: từ lam sang trắng ngà
+
+Trước đây Hàn Lập mặc lam đậm — **cùng tông với đồng môn Thất Huyền Môn** (`aoDeTu`
+0x7794B8), chỉ khác một bậc độ sáng. Đứng giữa một đám đệ tử thì nhân vật người chơi lẫn hẳn
+vào nền, mà đó là thứ tệ nhất một game hành động có thể làm. Đảo ngược quan hệ sáng-tối (thân
+áo TRẮNG, viền LAM) tách hắn ra khỏi mọi thứ khác trên sân mà không cần một màu lạc lõng nào.
+
+#### `handL` / `handR` — hai khớp thêm vào CUỐI rig
+
+Thêm ở cuối `CHIBI_JOINTS`, đúng luật của rig: clip lưu dữ liệu theo chỉ số mảng đó, nên chèn
+vào giữa là lệch toàn bộ animation đã có mà không có gì báo. Thêm ở cuối thì mọi clip cũ vẫn
+đọc đúng khớp của chúng, và hai khớp mới chỉ nhận thế nghỉ.
+
+Chúng có để **treo pháp bảo**. Trước đây bàn tay là một khối cầu hàn cứng vào khuỷu, nên
+không có node nào để gắn cây quạt hay lá phù vào — Hàn Lập thi triển Tam Diễm Phiến mà cây
+quạt không nằm trong tay ai cả.
+
+`art/props/handProps.ts` ánh xạ chiêu → vật cầm tay, và chỉ những chiêu có **vật thật** mới
+có mặt: Hoả Cầu Thuật, Canh Kim Kiếm Khí, Thái Ất Thanh Sơn Quyết đều là pháp lực thuần, nhét
+một vật vào tay chúng là nói sai về chính hạng của chiêu mà thẻ giới thiệu vừa ghi rõ ngay
+bên dưới màn hình. Vật cầm tay **gọi đúng hàm của bản trưng bày** rồi bọc vào một `Group` để
+thu nhỏ — dựng bản thứ hai thì đổi màu nan quạt ở Đồ Giám mà quạt trong tay vẫn màu cũ.
+
+Test khoá ngưỡng "không vật nào dài quá nửa thân người", và **nó đã bắt được một lỗi thật**:
+phi kiếm ở tỉ lệ 0,5 ra 0,55 unit, tức dài đúng bằng nửa nhân vật.
+
+`UPPER_BODY` phải thêm hai khớp bàn tay, dù chưa clip nào xoay chúng: pháp bảo treo vào khớp
+này, nên khi lớp phủ đòn đánh bỏ sót bàn tay thì cây quạt giữ thế của clip CHÂN — nó lắc theo
+nhịp chạy trong lúc tay đang vung.
+
+### Phong Lôi Sí — đôi cánh phong lôi
+
+Chiêu duy nhất trong bảng **mọc thêm hình lên người thi triển**, nên nó không thể chỉ là một
+vệt sáng: người xem phải nhìn ra đôi cánh trước khi nhìn ra cú lướt.
+
+Cánh gắn vào **xương thân**, không vào `chibi.root`. Gắn vào root thì cánh đứng yên trong lúc
+thân nhấp nhô theo chu kỳ chạy — đọc ra là đôi cánh trôi lơ lửng cạnh người chứ không mọc
+trên lưng người.
+
+**Ba quyết định về cách vỗ:**
+
+- **Từng phiến lệch pha nhau.** Cả năm phiến vỗ cùng nhịp thì cánh cứng như một tấm ván bản
+  lề. Lệch mỗi phiến 0,42 radian thì cú vỗ chạy từ vai ra mũi cánh thành một làn sóng — đó là
+  toàn bộ khác biệt giữa "cánh" và "cái quạt giấy".
+- **Vỗ quanh trục Z là chính, trục Y là phụ.** Z là nâng lên hạ xuống (cái mắt đọc là "đang
+  bay"); Y là quét trước sau, và để nó lớn thì cánh trông như đang **bơi**.
+- **`power` nhân vào cả góc xoè lẫn tỉ lệ.** Chỉ thu tỉ lệ thì lúc cánh nhỏ nó vẫn xoè hết
+  cỡ — một đôi cánh tí hon gắn trên lưng. Thu cả góc xoè thì nó cụp về sát lưng rồi mới biến
+  mất, tức đọc ra là cánh đang xếp. Mọc nhanh hơn xếp (12 so với 5): phải kịp hiện ra trước
+  cú lướt, nhưng nán lại một nhịp sau khi hết hiệu lực.
+
+**Bốn thứ phải sửa sau khi nhìn thấy nó chạy** — không cái nào đoán ra được trước khi dựng:
+
+- **Màu lông phải TỐI hơn hẳn cặp màu vệt của chính chiêu.** Bản đầu lấy đúng màu vệt
+  (0x9FF3FF → 0x7B3BD6) đắp lên lông, và kết quả là hai khối **trắng tinh** hai bên người:
+  lông cánh là bề mặt *được chiếu sáng*, mà nắng của bộ stylized mạnh 1,95 cộng hemisphere —
+  một màu nền đã ở mức 0xF3 thì nhân lên là vượt trần, mọi facet biến mất, rồi bloom trùm
+  nốt. Vệt đuôi không bị vì nó vẽ bằng phép cộng và không nhận ánh sáng nào. Phần chói giao
+  cho hai thứ *tự phát sáng*: khớp vai và tia lôi.
+- **Vật phát sáng phải là điểm nhấn NHỎ NHẤT khung hình.** Khớp vai bản đầu là nón 0,05 × 0,13
+  ở độ mờ 0,72; nó bloom thành hai tam giác trắng to hơn cả cánh, che mất đúng thứ nó sinh ra
+  để nối vào.
+- **Vệt đuôi phải gác theo TỐC ĐỘ, không theo "cánh đang xoè".** Cánh vỗ tại chỗ thì đầu cánh
+  chạy đi chạy lại trên một cung ngắn, và vệt dài 0,3 giây cuộn chồng lên chính nó thành một
+  **đốm sáng đặc** — hai khối trắng hai bên vai. Vệt là thứ nói "vật này đang lao qua không
+  gian"; đứng yên thì nó không có gì để nói. Ngưỡng 2,4 lấy đúng ngưỡng của vệt chạy bộ.
+- **Tia lôi phải GÃY KHÚC.** Một thanh thẳng phát sáng đọc ra là tia laser; cái làm mắt nhận
+  ra sét là những khúc gãy đột ngột, không phải độ sáng. Bốn khúc là đủ — ba thì chưa thành
+  nhịp, sáu thì ở cỡ này mỗi khúc nhỏ hơn một pixel và tia lại thẳng trở lại. Gộp thành một
+  geometry nên cả tia vẫn là một draw call, y như thanh thẳng nó thay thế.
+
+Bề rộng quạt lông cũng phải **thu lại** một lần: bản đầu xoè hơn 110° cho cả hai bên, và nhìn
+từ sau lưng thì hai cánh khép thành một vòng gần tròn quanh người — mắt đọc ra một cái quạt
+xoè. Cánh chim thật hẹp hơn nhiều so với trực giác: cái nói lên "cánh" là nó **chỉ về một
+hướng**, không phải nó phủ được bao nhiêu độ.
+
+### Bộ stylized chỉ dành cho màn có THẾ GIỚI
+
+Nó dựng một buổi trưa ngoài trời: nắng 1,95, đèn viền linh khí, sương mù xa và bloom. Trên
+một sân đá có cây, có nhà, có quái thì đó đúng là thứ làm cảnh đẹp lên.
+
+Trên bệ trưng bày của Đồ Giám — một mô hình đơn độc, không nền, không gì để so sáng — cũng
+bấy nhiêu ánh sáng đó **đốt cháy trắng cả khuôn mặt**, và người xem không còn đọc được màu áo
+lẫn nét mặt, tức mất đúng thứ họ mở Đồ Giám ra để xem. Mất khá lâu mới nhận ra thủ phạm là
+ánh sáng chứ không phải mô hình: tắt bộ stylized một lần là thấy ngay bản dựng vốn sạch sẽ.
+
+Nên `main.ts` bật bộ stylized theo một điều kiện đọc được: màn nào cấp `coolSpots` thì có
+thế giới; màn nào không thì dùng bộ đèn mặc định, dịu hơn hẳn.
+
 ### Bộ pháp thuật theo nguyên tác — 17 chiêu, bốn cảnh giới
 
 Bảng chiêu cũ có 10 mục và dừng ở Kết Đan. Nay là **17 chiêu chia bốn đại cảnh giới**, và

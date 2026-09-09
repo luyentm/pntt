@@ -41,6 +41,10 @@ export interface Chibi {
   /** Node đặt vào thế giới. Xoay node này để nhân vật quay mặt. */
   root: Group
   mesh: SkinnedMesh
+  /**
+   * Xương theo tên. `handL` / `handR` là chỗ treo pháp bảo, `torso` là chỗ treo
+   * đôi cánh — thêm vật vào đó thì nó theo cả tỉ lệ lẫn chuyển động của thân.
+   */
   bones: Record<ChibiJoint, Bone>
   animator: Animator<ChibiJoint>
   /** Chiều cao thực tế sau khi nhân tỉ lệ, dùng cho HP bar và ngắm chiêu. */
@@ -53,7 +57,13 @@ export function chibiRadius(height = 1): number {
 }
 
 /**
- * Dựng một nhân vật chibi.
+ * Dựng một nhân vật chibi RẺ TIỀN — quái, đồng môn, ma đạo.
+ *
+ * Hàm này tồn tại để dựng HÀNG CHỤC đơn vị cùng lúc, nên ngân sách tam giác của
+ * nó là ngân sách của cả một đợt quái: mặt cầu 7×5, không có tóc rời, không có
+ * nếp áo. Nhân vật người chơi KHÔNG đi qua đây — Hàn Lập có builder riêng
+ * (`art/characters/HanLap.ts`) được phép tốn gấp nhiều lần, vì chỉ có một hắn
+ * trên màn hình và người chơi nhìn hắn suốt cả lượt chơi.
  *
  * Tỉ lệ là thứ quyết định "cute": đầu chiếm ~42% chiều cao (người thật ~13%),
  * chi ngắn và mập, mắt to đặt thấp trên khuôn mặt. Ở khoảng cách camera iso
@@ -192,11 +202,17 @@ export function buildChibi(params: ChibiParams): Chibi {
     cuff.translate(0, -0.132, 0)
     b.add(elbowJoint, cuff, params.trim)
 
+  }
+
+  // Bàn tay gắn vào KHỚP BÀN TAY, không vào khuỷu. Hình dáng không đổi một ly
+  // (khớp nằm đúng chỗ khối cầu vẫn ở), nhưng giờ pháp bảo treo vào cùng node
+  // với bàn tay nên nó không bao giờ trôi khỏi nắm tay.
+  for (const handJoint of ['handL', 'handR'] as ChibiJoint[]) {
     const hand = new SphereGeometry(0.043, 5, 3)
     hand.scale(1, 0.9, 1.05)
-    hand.translate(0, -0.163, 0)
-    b.add(elbowJoint, hand, params.skin)
+    b.add(handJoint, hand, params.skin)
   }
+
 
   const material = materials.flat(0xffffff, { vertexColors: true })
   const { mesh, skeleton } = b.finish(material, params.name)

@@ -50,6 +50,12 @@ mở bảng debug (ẩn sẵn ở bản PROD, vẫn mở được).
 - **`three` ghim ở `0.185.1`** vì `postprocessing` yêu cầu `>= 0.168 < 0.186`.
 - **`base: './'` trong `vite.config.ts`** — GitHub Pages phục vụ ở đường dẫn con `/pntt/`.
 - Kiến trúc dựng theo **tỉ lệ chibi**, không tỉ lệ người thật (nhân vật cao ~1.1 unit).
+- **Hàn Lập KHÔNG đi qua `buildChibi`.** Hắn có builder riêng
+  (`art/characters/HanLap.ts`) và được phép tốn gấp nhiều lần tam giác, vì chỉ có một hắn
+  trên màn hình. `buildChibi` giữ đúng vai cũ: dựng hàng chục quái rẻ tiền. Cả hai vẫn ra
+  MỘT `SkinnedMesh` một draw call, và dùng chung `CHIBI_RIG`.
+- **Thêm khớp vào rig thì thêm ở CUỐI `CHIBI_JOINTS`.** Clip lưu dữ liệu theo chỉ số mảng
+  đó; chèn vào giữa là lệch toàn bộ animation đã có mà không có gì báo.
 
 ## Kiến trúc
 
@@ -67,7 +73,8 @@ game/     Luật chơi thuần số: Stats · Cultivation · Effects · Inventor
           · ShowcaseDirector
 game/data/ Nội dung: units · skills · items · recipes · realms · waves · dropTables
           · showcase · codex · player
-art/      Rig + hàm dựng geometry (chibi, thú, prop, kiến trúc) · Palette · PropBatch
+art/      Rig + hàm dựng geometry (chibi, thú, prop, kiến trúc, pháp bảo, cánh)
+          · Palette · PropBatch · characters/HanLap (bản dựng riêng, high-poly)
 anim/     Rig · Clip (keyframe biên dịch sang Float32Array) · clips/
 vfx/      Vfx (mặt tiền) · RibbonTrails · FootAura · SlashArc · AreaBurst · ...
 ui/       Hud · Menu · SkillBar · panels/ · styles/base.css

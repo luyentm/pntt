@@ -14,7 +14,7 @@ import { Hud } from '@/ui/Hud'
 import { ShowcasePanel } from '@/ui/ShowcasePanel'
 import { SkillBar } from '@/ui/SkillBar'
 import { WorldBars } from '@/ui/WorldBars'
-import { Vfx } from '@/vfx/Vfx'
+import { Vfx, WING_TRAIL } from '@/vfx/Vfx'
 import { CollisionWorld } from './Collision'
 import { CombatWorld } from './CombatWorld'
 import { FLAT_GROUND } from './Terrain'
@@ -89,6 +89,8 @@ export class SwordTerraceScene implements GameScene {
   private ctx!: SceneContext
   private readonly objects: Object3D[] = []
   private readonly cursor = new Vector3()
+  /** Bộ đệm toạ độ đầu cánh — tránh cấp phát mỗi khung. */
+  private readonly wingTip = new Vector3()
   private vfx!: Vfx
   private hud!: Hud
   private skillBar!: SkillBar
@@ -419,6 +421,7 @@ export class SwordTerraceScene implements GameScene {
       RUN_TRAIL,
     )
     this.vfx.follow('player:fly', alive && pl.flying, pl.pos.x, pl.y + 0.05, pl.pos.z, FLY_TRAIL)
+    this.followWings(alive)
     if (alive) {
       this.vfx.footAuraStep(
         frameDt,
@@ -472,6 +475,35 @@ export class SwordTerraceScene implements GameScene {
       } else {
         this.marker.visible = false
       }
+    }
+  }
+
+  /**
+   * Vệt lôi ở hai đầu cánh Phong Lôi Sí.
+   *
+   * Lấy toạ độ đầu cánh trong không gian WORLD, không tính lại từ vị trí nhân
+   * vật: đầu cánh treo dưới xương thân qua hai lớp `Group` đang xoay theo nhịp
+   * vỗ, nên chỉ ma trận world mới biết nó đang ở đâu. Cộng một khoảng lệch cố
+   * định vào vị trí nhân vật thì vệt bám vào một điểm đứng yên bên cạnh cánh.
+   */
+  private followWings(alive: boolean): void {
+    const pl = this.player
+    // Phải có cả ĐANG BAY LƯỚT, không chỉ "cánh đang xoè".
+    //
+    // Cánh vỗ tại chỗ thì đầu cánh chạy đi chạy lại trên một cung ngắn, và vệt
+    // dài 0,3 giây cuộn chồng lên chính nó thành một ĐỐM SÁNG ĐẶC — hai khối
+    // trắng hai bên vai, che kín đúng đôi cánh mà nó đang cố tôn lên. Vệt là
+    // thứ nói "vật này đang lao qua không gian"; đứng yên thì nó không có gì
+    // để nói. Ngưỡng 2,4 lấy đúng ngưỡng của vệt chạy bộ.
+    const on = alive && pl.wingsOut && pl.moveSpeed > 2.4
+    for (const side of [-1, 1]) {
+      const key = side > 0 ? 'wing:L' : 'wing:R'
+      if (!on) {
+        this.vfx.follow(key, false, 0, 0, 0)
+        continue
+      }
+      pl.wingTip(side, this.wingTip)
+      this.vfx.follow(key, true, this.wingTip.x, this.wingTip.y, this.wingTip.z, WING_TRAIL)
     }
   }
 

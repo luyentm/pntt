@@ -1,7 +1,7 @@
 import { Group, type Object3D } from 'three'
 import { buildBeast } from '@/art/buildBeast'
 import { buildChibi } from '@/art/buildChibi'
-import { HAN_LAP_LOOK } from '@/game/data/player'
+import { buildHanLap } from '@/art/characters/HanLap'
 import {
   buildChuongThienBinh,
   buildCodexPedestal,
@@ -153,7 +153,10 @@ export class CodexScene implements GameScene {
   ): { node: Object3D; animator: Animator<string> | null; idleClip?: never } | null {
     switch (model.kind) {
       case 'hanLap': {
-        const chibi = buildChibi({ name: 'CodexHanLap', height: 1, detail: 'full', ...HAN_LAP_LOOK })
+        // Đúng builder mà trận đấu dùng, không phải một bản dựng lại: Đồ Giám
+        // nói về nhân vật THẬT, nên hai chỗ lệch nhau một chi tiết là Đồ Giám
+        // nói dối về đúng thứ nó sinh ra để mô tả
+        const chibi = buildHanLap()
         chibi.root.scale.setScalar(1.15)
         return { node: chibi.root, animator: chibi.animator as unknown as Animator<string> }
       }

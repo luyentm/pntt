@@ -113,10 +113,17 @@ async function gotoScene(key: SceneKey): Promise<void> {
   currentKey = key
   await game.setScene(scene)
 
-  // Đèn lạnh do MÀN cấp: nó là nơi biết cột đá đứng đâu. Đồ Giám không có cột
-  // nào nên nó không cấp — bộ stylized tự chạy với danh sách rỗng.
-  const spots = 'coolSpots' in scene ? scene.coolSpots : []
-  stylized.enable(spots)
+  // Bộ stylized chỉ dành cho màn có THẾ GIỚI.
+  //
+  // Nó dựng một buổi trưa ngoài trời: nắng 1,95, đèn viền linh khí, sương mù xa
+  // và bloom. Trên một sân đá có cây, có nhà, có quái thì đó đúng là thứ làm
+  // cảnh đẹp lên. Trên bệ trưng bày của Đồ Giám — một mô hình đơn độc, không
+  // nền, không gì để so sáng — cũng bấy nhiêu ánh sáng đó đốt cháy trắng cả
+  // khuôn mặt, và người xem không còn đọc được màu áo lẫn nét mặt, tức mất đúng
+  // thứ họ mở Đồ Giám ra để xem. Màn nào cấp `coolSpots` thì có thế giới; màn
+  // nào không thì dùng bộ đèn mặc định, dịu hơn hẳn.
+  if ('coolSpots' in scene) stylized.enable(scene.coolSpots)
+  else stylized.disable()
   applySettings(settings)
 
   debug?.dispose()

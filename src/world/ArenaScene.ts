@@ -19,7 +19,7 @@ import { AlchemyPanel, type AlchemyHost } from '@/ui/panels/AlchemyPanel'
 import { CultivationPanel, type CultivationHost } from '@/ui/panels/CultivationPanel'
 import { InventoryPanel, type InventoryHost } from '@/ui/panels/InventoryPanel'
 import type { Panel } from '@/ui/panels/Panel'
-import { Vfx } from '@/vfx/Vfx'
+import { Vfx, WING_TRAIL } from '@/vfx/Vfx'
 import { Crowd } from './Crowd'
 import { PickupSystem } from './Pickups'
 import { SwordStorm, SWORD_CAPACITY } from './SwordStorm'
@@ -147,6 +147,8 @@ export class ArenaScene implements GameScene {
   private marker?: Mesh
   private targetMarker?: Mesh
   private readonly cursor = new Vector3()
+  /** Bộ đệm toạ độ đầu cánh — tránh cấp phát mỗi khung. */
+  private readonly wingTip = new Vector3()
   private vfx!: Vfx
   private hud!: Hud
   private skillBar!: SkillBar
@@ -1348,6 +1350,25 @@ export class ArenaScene implements GameScene {
       RUN_TRAIL,
     )
     this.vfx.follow('player:fly', alive && flying, x, p.y + 0.05, z, FLY_TRAIL)
+
+    // Vệt lôi ở hai đầu cánh Phong Lôi Sí. Lấy toạ độ WORLD của đầu cánh chứ
+    // không cộng một khoảng lệch vào vị trí nhân vật: đầu cánh treo dưới xương
+    // thân qua hai lớp Group đang xoay theo nhịp vỗ, nên chỉ ma trận world mới
+    // biết nó đang ở đâu.
+    // Phải có cả ĐANG BAY LƯỚT: cánh vỗ tại chỗ thì đầu cánh chạy đi chạy lại
+    // trên một cung ngắn và vệt cuộn chồng lên chính nó thành một đốm sáng đặc,
+    // che kín đôi cánh. Ngưỡng 2,4 lấy đúng ngưỡng của vệt chạy bộ.
+    const wingsOn = alive && p.wingsOut && speed > 2.4
+    for (const side of [-1, 1]) {
+      const key = side > 0 ? 'wing:L' : 'wing:R'
+      if (!wingsOn) {
+        this.vfx.follow(key, false, 0, 0, 0)
+        continue
+      }
+      p.wingTip(side, this.wingTip)
+      this.vfx.follow(key, true, this.wingTip.x, this.wingTip.y, this.wingTip.z, WING_TRAIL)
+    }
+
     if (alive) {
       this.vfx.footAuraStep(frameDt, x, p.y, z, p.combatant.facing, speed, flying)
     }

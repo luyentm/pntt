@@ -118,6 +118,22 @@ const TRAIL_PHONG_LOI = { head: 0x9ff3ff, tail: 0x7b3bd6 }
 const TRAIL_TRAN_KY = { head: 0xf6e3a8, tail: 0x6b4a24 }
 
 /**
+ * Vệt ở ĐẦU MỖI CÁNH của Phong Lôi Sí.
+ *
+ * Cùng cặp màu với chiêu, và cố tình ngắn (0,3 giây): cánh vỗ 9–14 nhịp mỗi
+ * giây, nên một vệt sống lâu sẽ chồng lên chính nó thành một khối sáng đặc và
+ * nuốt mất hình đôi cánh — đúng thứ chiêu này sinh ra để khoe. Ngắn thì mỗi cú
+ * vỗ để lại một nét cong riêng, và mắt đọc được nhịp.
+ */
+export const WING_TRAIL = {
+  head: 0x9ff3ff,
+  tail: 0x7b3bd6,
+  width: 0.11,
+  life: 0.3,
+  opacity: 0.95,
+}
+
+/**
  * Cặp màu vệt gắn theo TỪNG CHIÊU, tra trước khi tra theo ngũ hành.
  *
  * Cần vì ngũ hành của chiêu không phải lúc nào cũng là màu của chiêu. Thiên Lôi

@@ -50,13 +50,20 @@ export const ATTACK_STEPS: readonly AttackStep[] = [
 /** Sau frame gây sát thương, còn bấy nhiêu giây để bấm nối nhát tiếp theo. */
 export const COMBO_CHAIN_WINDOW = 0.42
 
+/**
+ * Bộ màu của Hàn Lập, cho những chỗ CHỈ CẦN MÀU chứ không dựng lại hình.
+ *
+ * Hình của hắn nằm ở `art/characters/HanLap.ts` và có bảng màu riêng trong đó.
+ * Bảng này còn lại để dùng cho hào quang, vệt và mọi thứ muốn ăn theo tông của
+ * nhân vật mà không phải mở file dựng hình ra chép.
+ */
 export const HAN_LAP_LOOK = {
   robe: Palette.aoHanLap,
   robeDark: Palette.aoHanLapDam,
-  trim: Palette.vienAo,
-  sash: Palette.daiLung,
+  trim: Palette.vienLamHanLap,
+  sash: Palette.daiLungHanLap,
   skin: Palette.daNguoi,
-  hair: Palette.toc,
-  boot: Palette.than,
+  hair: Palette.tocHanLap,
+  boot: Palette.hiaHanLap,
   eye: Palette.mat,
 } as const

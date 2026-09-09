@@ -19,6 +19,17 @@ export const CHIBI_JOINTS = [
   'kneeL',
   'hipR',
   'kneeR',
+  // Hai khớp bàn tay thêm SAU CÙNG, đúng luật của rig: clip lưu dữ liệu theo
+  // chỉ số mảng này, nên chèn vào giữa là lệch toàn bộ animation đã có mà
+  // không có gì báo. Thêm ở cuối thì mọi clip cũ vẫn đọc đúng khớp của chúng,
+  // và hai khớp mới chỉ nhận thế nghỉ (tức là đứng yên) cho tới khi có clip
+  // nào nói khác.
+  //
+  // Có để GẮN PHÁP BẢO. Trước đây bàn tay chỉ là một khối cầu hàn cứng vào
+  // khuỷu, nên không có node nào để treo cây quạt hay lá phù vào — Hàn Lập thi
+  // triển Tam Diễm Phiến mà cây quạt không nằm trong tay ai cả.
+  'handL',
+  'handR',
 ] as const
 
 export type ChibiJoint = (typeof CHIBI_JOINTS)[number]
@@ -37,6 +48,9 @@ const CHIBI_REST: Record<ChibiJoint, JointRest> = {
   kneeL: { pos: [0, -0.16, 0], parent: 'hipL' },
   hipR: { pos: [-0.072, 0, 0], parent: 'hip' },
   kneeR: { pos: [0, -0.16, 0], parent: 'hipR' },
+  // Đúng chỗ khối cầu bàn tay vẫn nằm từ trước, để dáng người không đổi một ly
+  handL: { pos: [0, -0.163, 0], parent: 'elbowL' },
+  handR: { pos: [0, -0.163, 0], parent: 'elbowR' },
 }
 
 export const CHIBI_RIG: RigDef<ChibiJoint> = createRig('chibi', CHIBI_JOINTS, CHIBI_REST)

@@ -1,14 +1,16 @@
-import { Mesh, MathUtils, Vector3 } from 'three'
+import { Mesh, MathUtils, Vector3, type Object3D } from 'three'
 import { CAST, FLY, MEDITATE } from '@/anim/clips/combat'
 import { flyingSwordGeometry } from '@/art/props/swords'
-import { buildChibi, chibiRadius, type Chibi } from '@/art/buildChibi'
+import { buildPhongLoiSi, type PhongLoiSi } from '@/art/props/wings'
+import { buildHandProp, hasHandProp } from '@/art/props/handProps'
+import { chibiRadius, type Chibi } from '@/art/buildChibi'
+import { buildHanLap } from '@/art/characters/HanLap'
 import type { Input } from '@/core/Input'
 import { MouseBtn } from '@/core/Input'
 import {
   ATTACK_STEPS,
   COMBO_CHAIN_WINDOW,
   HAN_LAP_BASE,
-  HAN_LAP_LOOK,
   START_REALM,
   type AttackStep,
 } from '@/game/data/player'
@@ -140,6 +142,20 @@ export class Player {
   private flyTrailTimer = 0
   /** Phi kiếm dưới chân. Con của chibi.root nên tự bám vị trí và hướng nhân vật. */
   private readonly sword: Mesh
+  /**
+   * Đôi cánh Phong Lôi Sí. Gắn vào XƯƠNG THÂN, không vào `chibi.root`.
+   *
+   * Gắn vào root thì cánh đứng yên trong lúc thân nhấp nhô theo chu kỳ chạy —
+   * đọc ra là đôi cánh trôi lơ lửng cạnh người chứ không mọc trên lưng người.
+   */
+  private readonly wings: PhongLoiSi
+  /** Mức xoè cánh 0..1, lerp chứ không bật/tắt. */
+  private wingPower = 0
+  /** Đồng hồ riêng cho nhịp vỗ cánh — thời gian THẬT, không phải bước fixed. */
+  private wingClock = 0
+  /** Pháp bảo đang cầm trên tay, nếu chiêu đang thi triển có một cái. */
+  private heldProp: Object3D | null = null
+  private heldPropId: string | null = null
 
   private phase: AttackPhase = 'none'
   private comboStep = 0
@@ -160,12 +176,7 @@ export class Player {
   private readonly hitBuffer: Combatant[] = []
 
   constructor() {
-    this.chibi = buildChibi({
-      name: 'HanLap',
-      height: 1,
-      detail: 'full',
-      ...HAN_LAP_LOOK,
-    })
+    this.chibi = buildHanLap()
     const stats = deriveStats(HAN_LAP_BASE, this.cultivation.realm)
     this.combatant = new Combatant(
       'player',
@@ -190,6 +201,48 @@ export class Player {
     this.sword.visible = false
     this.sword.castShadow = false
     this.chibi.root.add(this.sword)
+
+    // Cánh treo sau lưng, ngay dưới bả vai. Lệch -Z để nó mọc từ LƯNG chứ không
+    // xuyên qua ngực, và hơi cao để gốc cánh không cắm vào đai lưng.
+    this.wings = buildPhongLoiSi()
+    // y = 0.26 là NGANG VAI (xương vai ở 0.26 trong hệ của thân): cánh mọc thấp
+    // hơn thì nó đọc ra là mọc từ eo, mà cánh mọc từ eo trông như một cái đuôi
+    this.wings.root.position.set(0, 0.26, -0.11)
+    this.chibi.bones.torso.add(this.wings.root)
+  }
+
+  /** Đầu cánh trong không gian world — VFX bám vệt lôi vào đây. */
+  wingTip(side: number, out: Vector3): Vector3 {
+    return this.wings.tipWorld(side, out)
+  }
+
+  /** Cánh có đang xoè đủ để đáng vẽ vệt hay không. */
+  get wingsOut(): boolean {
+    return this.wingPower > 0.35
+  }
+
+  /**
+   * Treo pháp bảo của chiêu đang thi triển vào tay phải, tháo khi thi triển xong.
+   *
+   * Dựng LẠI mỗi lần đổi chiêu thay vì giữ sẵn cả bộ và bật/tắt `visible`: một
+   * lượt chơi chỉ đi qua vài chiêu có pháp bảo cầm tay, còn giữ sẵn thì mọi
+   * nhân vật đều mang theo cả cây quạt lẫn lá cờ suốt trận chỉ để chúng ẩn.
+   */
+  private updateHeldProp(): void {
+    const wanted = this.caster.isCasting ? (this.caster.activeId ?? null) : null
+    const id = wanted && hasHandProp(wanted) ? wanted : null
+    if (id === this.heldPropId) return
+
+    if (this.heldProp) {
+      this.heldProp.removeFromParent()
+      this.heldProp = null
+    }
+    this.heldPropId = id
+    if (!id) return
+
+    const prop = buildHandProp(id)
+    this.chibi.bones.handR.add(prop)
+    this.heldProp = prop
   }
 
   /** Đã tới Trúc Cơ chưa — cổng mở của Ngự Kiếm Phi Hành. */
@@ -937,5 +990,16 @@ export class Player {
   /** Nhịp frame: chỉ animation, để chuyển động mượt hơn 60Hz. */
   render(frameDt: number): void {
     this.combatant.view.update(frameDt)
+    this.updateHeldProp()
+
+    // Cánh MỌC RA và XẾP LẠI, không bật/tắt. Mọc nhanh hơn xếp (12 so với 5):
+    // nó phải kịp hiện ra trước khi cú lướt bắt đầu, nhưng nán lại một nhịp sau
+    // khi hết hiệu lực thì mới đọc ra là "cánh đang tan" chứ không phải "cánh
+    // vừa biến mất".
+    const want = this.combatant.effects.has('phongLoi') && !this.combatant.dead ? 1 : 0
+    const rate = want > this.wingPower ? 12 : 5
+    this.wingPower += (want - this.wingPower) * (1 - Math.exp(-rate * frameDt))
+    this.wingClock += frameDt
+    this.wings.update(this.wingClock, this.wingPower)
   }
 }
