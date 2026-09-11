@@ -6,6 +6,7 @@ import {
   stepTitle,
   type ShowcaseStep,
 } from '@/game/data/showcase'
+import { loopBeat } from '@/game/ShowcaseDirector'
 import {
   DAMAGE_BAND_LABEL,
   PHAP_BAO_RANK_LABEL,
@@ -19,6 +20,11 @@ function esc(text: string): string {
   return text.replace(/[&<>"]/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;',
   )
+}
+
+/** Số giây viết theo lối tiếng Việt: dấu phẩy thập phân, và bỏ phần `,0`. */
+function giay(seconds: number): string {
+  return seconds.toFixed(1).replace(/\.0$/, '').replace('.', ',')
 }
 
 /**
@@ -54,9 +60,10 @@ function damageLine(def: SkillDef): string {
  * Mọi con số trên thẻ đều SUY từ bảng pháp thuật, không gõ tay ở đây: chỉnh cân
  * bằng một hệ số là thẻ đổi theo, thay vì âm thầm nói sai.
  *
- * Danh sách hiện HẾT chứ không chỉ bước đang diễn: người vào đây để xem Hàn Lập
- * có những gì, nên họ phải thấy được toàn bộ ngay từ đầu và nhảy tới cái mình
- * muốn xem — không phải ngồi đợi showreel đi tới.
+ * Danh sách hiện HẾT chứ không chỉ chiêu đang diễn: người vào đây để xem Hàn Lập
+ * có những gì, nên họ phải thấy được toàn bộ ngay từ đầu và bấm thẳng vào cái
+ * mình muốn xem. Bấm một dòng là chiêu đó lặp mãi cho tới khi đổi dòng khác —
+ * danh sách này là bộ điều khiển chính của màn, không phải một mục lục.
  */
 export class ShowcasePanel {
   private readonly root: HTMLDivElement
@@ -82,8 +89,9 @@ export class ShowcasePanel {
         </div>
         <div data-role="card"></div>
         <div class="showcase-keys">
-          <b>P</b> tự chạy / tự chơi · <b>Q</b> <b>E</b> đổi chiêu ·
-          <b>1…0</b> thi triển · <b>Space</b> ngự kiếm · <b>Esc</b> về menu
+          <b>Q</b> <b>E</b> đổi chiêu · <b>kéo chuột</b> xoay quanh nhân vật ·
+          <b>lăn chuột</b> thu phóng · <b>1…0</b> tự thi triển ·
+          <b>Space</b> ngự kiếm · <b>Esc</b> về menu
         </div>
       </div>
     `
@@ -144,6 +152,9 @@ export class ShowcasePanel {
   setStep(step: ShowcaseStep, index: number, total: number): void {
     this.card.innerHTML = this.cardHtml(step)
     this.counter.textContent = `${index + 1} / ${total}`
+    // Nói thẳng nhịp lặp thay vì chỉ một chữ "đang lặp": người xem cần biết bao
+    // lâu nữa chiêu ra lại để còn kịp xoay camera về chỗ muốn nhìn trước nhịp sau
+    this.state.textContent = `↻ lặp mỗi ${giay(loopBeat(step))}s`
     if (index !== this.active) {
       if (this.active >= 0) this.rows[this.active]?.classList.remove('is-active')
       this.active = index
@@ -198,11 +209,6 @@ export class ShowcasePanel {
       </div>
       <div class="showcase-lore">${esc(def.phapBao.note)} ${esc(def.nguonGoc)}</div>
       <div class="showcase-note">${esc(step.note)}</div>`
-  }
-
-  setPlaying(playing: boolean): void {
-    this.state.textContent = playing ? '▶ đang tự chạy' : '❙❙ tự chơi'
-    this.root.classList.toggle('is-manual', !playing)
   }
 
   dispose(): void {

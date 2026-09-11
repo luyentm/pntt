@@ -26,6 +26,8 @@ import type { GameScene, SceneContext } from './Scene'
 
 /** Bán kính đài. Người chơi không ra khỏi được vòng này. */
 const TERRACE_RADIUS = 13
+/** Khoảng cách camera gần nhất cho phép ở màn này — xem mục `load`. */
+const CLOSE_DISTANCE = 5
 /** Vành cột đá quanh đài. */
 const PILLAR_RING = 11.6
 const LANTERN_RING = 12.4
@@ -77,6 +79,8 @@ const TARGET_RINGS: ReadonlyArray<{
  */
 export class SwordTerraceScene implements GameScene {
   readonly name = 'luyenKiemDai'
+  /** Chuột trái kéo là xoay camera — ở đây nó không còn là nút đánh. */
+  readonly orbitOnLeftDrag = true
 
   readonly collision = new CollisionWorld()
   readonly showcase = new ShowcaseDirector()
@@ -103,6 +107,8 @@ export class SwordTerraceScene implements GameScene {
   private lastHp = -1
   private lastMp = -1
   private elapsed = 0
+  /** Trần zoom cũ, trả lại lúc rời màn — camera dùng chung cho cả ba màn. */
+  private prevMinDistance = 0
 
   private readonly actions: ShowcaseActions = {
     // Không xoá hồi chiêu ở đây: `load` đã bật `caster.noCooldown`, nên diễn
@@ -127,6 +133,7 @@ export class SwordTerraceScene implements GameScene {
     },
     refreshTargets: () => this.spawnTargets(),
     setRealm: (realm) => this.setRealm(realm),
+    restore: () => this.restore(),
     announce: (step, index, total) => this.panel.setStep(step, index, total),
   }
 
@@ -168,13 +175,7 @@ export class SwordTerraceScene implements GameScene {
     this.skillBar = new SkillBar(uiRoot, ctx.bus)
     this.bars = new WorldBars(uiRoot)
     this.panel = new ShowcasePanel(uiRoot)
-    this.panel.onPick = (index) => {
-      // Bấm tay là người xem chọn cái họ muốn xem — chuyển sang tự chơi thay vì
-      // để showreel lôi đi sau vài giây
-      this.showcase.jumpTo(index, this.actions)
-      this.showcase.playing = false
-      this.panel.setPlaying(false)
-    }
+    this.panel.onPick = (index) => this.showcase.select(index, this.actions)
 
     this.projectiles.onExplode = (x, y, z, radius, spec) => {
       this.vfx.spawnExplosion(x, y, z, radius, spec.element)
@@ -209,12 +210,21 @@ export class SwordTerraceScene implements GameScene {
     // chờ vô nghĩa. Cổng `phase !== 'none'` vẫn chặn chiêu chồng lên nhau.
     this.player.caster.freeCast = true
     this.player.caster.noCooldown = true
+    // Chuột trái ở đây là nút XOAY CAMERA, nên nó không được ra đòn nữa: kéo
+    // một vòng quanh nhân vật mà mỗi lần kéo lại chém ra ba nhát thì vừa che
+    // mất chiêu đang diễn vừa đánh sập vòng bia. Muốn chém tay thì còn `J`.
+    this.player.mouseAttack = false
 
     this.showcase.reset()
-    this.showcase.start(this.actions)
+    this.showcase.select(0, this.actions)
     this.panel.show()
-    this.panel.setPlaying(true)
 
+    // Cho zoom sát hơn hẳn lượt chơi. Ở đây chỉ có MỘT vật đáng nhìn và không
+    // có gì đánh lén từ sau lưng, nên khoảng cách tối thiểu không cần chừa tầm
+    // nhìn chiến thuật — 5 unit là đủ gần để đếm nếp áo Hàn Lập và nhìn rõ
+    // đường đi của từng thanh kiếm trúc.
+    this.prevMinDistance = camera.minDistance
+    camera.minDistance = CLOSE_DISTANCE
     camera.snapTo(0, 0.9, 0)
     three.updateMatrixWorld(true)
     ctx.bus.emit('scene:loaded', { name: this.name })
@@ -251,27 +261,32 @@ export class SwordTerraceScene implements GameScene {
     })
   }
 
-  /**
-   * Đặt cảnh giới cho bước sắp diễn, và bù đầy sinh lực lẫn linh lực.
-   *
-   * Bù đầy MỖI LẦN chứ không chỉ lúc vào màn: showreel diễn Giá Y Thần Công mỗi
-   * vòng, mỗi lần đốt 18% máu, nên không bù thì sau vài vòng thanh máu cạn tới
-   * đáy và người xem đọc ra là nhân vật đang chết dở.
-   */
+  /** Đặt cảnh giới cho chiêu sắp diễn. Đổi cảnh giới thì bù đầy luôn hai thanh. */
   private setRealm(realm: RealmPosition): void {
     const p = this.player
-    if (p.cultivation.realm.major === realm.major && p.cultivation.realm.tier === realm.tier) {
-      p.combatant.hp = p.combatant.stats.maxSinhLuc
-      p.linhLuc = p.combatant.stats.maxLinhLuc
-      return
+    if (p.cultivation.realm.major !== realm.major || p.cultivation.realm.tier !== realm.tier) {
+      p.cultivation.realm.major = realm.major
+      p.cultivation.realm.tier = realm.tier
+      p.cultivation.tuVi = 0
+      p.refreshStats()
+      this.hud.setRealm(p.realm)
     }
-    p.cultivation.realm.major = realm.major
-    p.cultivation.realm.tier = realm.tier
-    p.cultivation.tuVi = 0
-    p.refreshStats()
+    this.restore()
+  }
+
+  /**
+   * Bù đầy sinh lực và linh lực.
+   *
+   * Gọi trước MỖI nhịp diễn chứ không chỉ lúc đổi chiêu, vì chiêu lặp vô hạn:
+   * Giá Y Thần Công đốt 18% máu mỗi lần thi triển và ngự kiếm phi hành đốt 2,2%
+   * linh lực mỗi giây, nên xem một chiêu vài phút là hai thanh cạn đáy — nhân
+   * vật rơi khỏi kiếm giữa chừng, và người xem đọc ra là một cái lỗi chứ không
+   * phải cái giá của chiêu. Bù ngay TRƯỚC nhịp nên cú tụt vẫn thấy rõ đúng lúc.
+   */
+  private restore(): void {
+    const p = this.player
     p.combatant.hp = p.combatant.stats.maxSinhLuc
     p.linhLuc = p.combatant.stats.maxLinhLuc
-    this.hud.setRealm(p.realm)
   }
 
   /**
@@ -318,25 +333,15 @@ export class SwordTerraceScene implements GameScene {
   /**
    * Đọc phím của màn trình diễn.
    *
-   * Dùng `P` / `Q` / `E`, KHÔNG dùng `Space` và mũi tên: `Space` đã là phím ngự
-   * kiếm phi hành và mũi tên đã là phím di chuyển. Chồng lên nhau thì một lần
-   * bấm `Space` vừa lật showreel vừa cất nhân vật lên trời.
+   * Dùng `Q` / `E`, KHÔNG dùng `Space` và mũi tên: `Space` đã là phím ngự kiếm
+   * phi hành và mũi tên đã là phím di chuyển. Chồng lên nhau thì một lần bấm
+   * `Space` vừa đổi chiêu vừa cất nhân vật lên trời.
    */
   private readInput(): void {
     const { input } = this.ctx
-    if (input.wasPressed('KeyP')) {
-      this.showcase.toggle(this.actions)
-      this.panel.setPlaying(this.showcase.playing)
-    }
     if (input.wasPressed('KeyE')) this.showcase.next(this.actions)
     if (input.wasPressed('KeyQ')) this.showcase.prev(this.actions)
     if (input.wasPressed('Escape')) this.ctx.bus.emit('game:pauseRequest', {})
-
-    // Tự bấm một chiêu là chuyển sang tự chơi — rõ ràng người xem muốn tự làm
-    if (input.skillPressed() >= 0 && this.showcase.playing) {
-      this.showcase.playing = false
-      this.panel.setPlaying(false)
-    }
   }
 
   fixedUpdate(dt: number): void {
@@ -508,6 +513,12 @@ export class SwordTerraceScene implements GameScene {
   }
 
   unload(): void {
+    // Trả lại trần zoom: camera là của `Game`, không của màn — để nguyên 5 thì
+    // quay về đấu trường vẫn zoom sát được vào gáy nhân vật và mất hết tầm nhìn
+    const { camera } = this.ctx
+    camera.minDistance = this.prevMinDistance
+    camera.distance = Math.max(camera.distance, this.prevMinDistance)
+
     for (const obj of this.objects) obj.removeFromParent()
     this.objects.length = 0
     for (const t of this.targets) t.root.removeFromParent()

@@ -52,6 +52,13 @@ export interface GameScene {
   readonly name: string
   /** Có thì bảng debug sẽ hiện thêm nhóm điều khiển chiến đấu. */
   readonly debug?: SceneDebugActions
+  /**
+   * Kéo chuột TRÁI cũng xoay camera, không chỉ chuột phải.
+   *
+   * Chỉ màn NGẮM mới bật: ở lượt chơi chuột trái là nút chém, nên nhận thêm
+   * nhiệm vụ xoay camera thì mỗi lần chỉnh góc nhìn lại vung ra một combo.
+   */
+  readonly orbitOnLeftDrag?: boolean
   load(ctx: SceneContext): void | Promise<void>
   /** Nhịp cố định 60Hz — toàn bộ gameplay ở đây. */
   fixedUpdate(dt: number): void

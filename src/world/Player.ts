@@ -106,6 +106,8 @@ export class Player {
   readonly inventory = new Inventory()
   /** Đang toạ thiền — mất khả năng di chuyển, đổi lấy Tu Vi. */
   meditating = false
+  /** Toạ thiền do mã ra lệnh (`setMeditating`) chứ không do người chơi giữ `F`. */
+  private scriptedMeditate = false
   /**
    * Đang nhập định để đột phá.
    *
@@ -134,6 +136,14 @@ export class Player {
    */
   autoAim = true
   readonly aim = new AutoAim()
+
+  /**
+   * Chuột trái có ra đòn không.
+   *
+   * Tắt ở Luyện Kiếm Đài, nơi chuột trái là nút xoay camera. Phím `J` vẫn chém
+   * được, nên tắt cái này không lấy mất khả năng nào của người chơi.
+   */
+  mouseAttack = true
 
   /** Đang cưỡi phi kiếm. */
   flying = false
@@ -411,8 +421,9 @@ export class Player {
     //    lấy lại focus, `releaseAll()` xoá trạng thái phím nên sự kiện auto-repeat
     //    tiếp theo bị tính là một lần bấm mới và đòn tự phát. Nhận cả trạng thái
     //    giữ thì hai đường đi cho ra cùng một kết quả.
-    const attackPressed = input.mouseWasPressed(MouseBtn.Left) || input.wasPressed('KeyJ')
-    const attackHeld = input.mouseIsDown(MouseBtn.Left) || input.isDown('KeyJ')
+    const mouse = this.mouseAttack
+    const attackPressed = (mouse && input.mouseWasPressed(MouseBtn.Left)) || input.wasPressed('KeyJ')
+    const attackHeld = (mouse && input.mouseIsDown(MouseBtn.Left)) || input.isDown('KeyJ')
     if (attackPressed || (attackHeld && this.phase === 'none')) {
       this.queuedAttack = true
     }
@@ -621,12 +632,17 @@ export class Player {
    * bao giờ nên bị kẹt trong trạng thái bất lực mà phải bấm thêm nút để thoát.
    */
   private updateMeditation(dt: number, input: Input): void {
-    const wantsMeditate = input.isDown('KeyF')
+    // `scriptedMeditate` thay cho phím giữ khi toạ thiền do mã ra lệnh. Thiếu
+    // nó thì `setMeditating(true)` bị chính hàm này huỷ ngay bước sau — không
+    // ai đang giữ `F` — nên bước toạ thiền của Luyện Kiếm Đài chưa bao giờ diễn
+    // ra được lấy một khung hình, mà cũng chẳng có gì báo.
+    const wantsMeditate = this.scriptedMeditate || input.isDown('KeyF')
     const moving = input.moveAxis().x !== 0 || input.moveAxis().z !== 0
 
     if (this.meditating) {
       if (!wantsMeditate || moving || this.combatant.stagger > 0) {
         this.meditating = false
+        this.scriptedMeditate = false
         this.combatant.view.showIdle()
         return
       }
@@ -702,6 +718,7 @@ export class Player {
 
   /** Bật/tắt toạ thiền theo lệnh của mã. */
   setMeditating(on: boolean): void {
+    this.scriptedMeditate = on
     if (on === this.meditating) return
     if (on) {
       this.meditating = true

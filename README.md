@@ -59,7 +59,7 @@ hình không phản hồi.
 
 | Thao tác | Tác dụng |
 |---|---|
-| Kéo chuột phải | Xoay camera quanh nhân vật |
+| Kéo chuột phải | Xoay camera quanh nhân vật — kéo xuống là nhìn từ trên, kéo lên là hạ xuống ngang tầm mắt |
 | Cuộn chuột | Zoom |
 | `` ` `` | Ẩn/hiện bảng debug |
 | WASD / phím mũi tên | Di chuyển (theo hướng camera) |
@@ -82,7 +82,7 @@ Hai màn xem, chọn từ menu chính:
 
 | Màn | Phím |
 |---|---|
-| **Luyện Kiếm Đài** — trình diễn 17 pháp thuật qua bốn cảnh giới | `P` tự chạy / tự chơi · `Q` `E` lật bước · `1…0` tự thi triển · `Esc` về menu |
+| **Luyện Kiếm Đài** — trình diễn 17 pháp thuật qua bốn cảnh giới | bấm một dòng để chọn chiêu (chiêu đó lặp mãi) · `Q` `E` đổi chiêu · kéo chuột xoay quanh nhân vật · lăn chuột thu phóng · `1…0` tự thi triển · `Esc` về menu |
 | **Đồ Giám** — tra nhân vật, yêu thú, pháp bảo; mô hình 3D xoay | bấm một thẻ để mở · `Esc` lùi về lưới, rồi về menu |
 
 ## Kiến trúc
@@ -544,9 +544,10 @@ Ba thứ nhỏ phải sửa kèm, đều là dạng lỗi im lặng nếu bỏ q
   chiêu cuối có ô trên thanh mà không có phím nào gọi được.
 - Chữ bay lên của chiêu hỗ trợ hiện `⛨ 1870` cho khiên nhưng `+60%` cho hai chiêu tỉ lệ —
   cùng một trường `magnitude` mà đọc ra hai nghĩa khác nhau, và "⛨ 0.6" thì không nói gì cả.
-- Màn trình diễn phải **bù sinh lực mỗi bước**, không chỉ linh lực: showreel diễn Giá Y
-  Thần Công mỗi vòng, mỗi lần đốt 18% máu, nên sau vài vòng thanh máu cạn tới đáy và người
-  xem đọc ra là nhân vật đang chết dở.
+- Màn trình diễn phải **bù sinh lực**, không chỉ linh lực: Giá Y Thần Công đốt 18% máu mỗi
+  lần thi triển, nên sau vài vòng thanh máu cạn tới đáy và người xem đọc ra là nhân vật đang
+  chết dở. (Từ bản lặp-một-chiêu thì bù trước **mỗi nhịp**, không chỉ mỗi bước — xem mục
+  Luyện Kiếm Đài.)
 
 ### Hàn Lập — bản dựng riêng, và khớp bàn tay
 
@@ -835,8 +836,69 @@ thể khác hẳn. `ArenaScene` gọn đi gần 200 dòng.
 - **Thả vệt đuôi theo HẾT sức chứa đàn kiếm**, không theo số kiếm của lượt vừa rồi: lượt
   trước có thể đông hơn lượt này, và vệt của những chỗ ngồi thừa sẽ treo lại giữa không khí
   cho tới lần nào đó tình cờ đông bằng.
-- `P` tự chạy / tự chơi · `Q` `E` lật bước · `1…0` tự thi triển · `Esc` về menu. Dùng
-  `P`/`Q`/`E` chứ **không** `Space` và mũi tên — `Space` đã là ngự kiếm phi hành.
+- `Q` `E` đổi chiêu · `1…0` tự thi triển · `Esc` về menu. Dùng `Q`/`E` chứ **không** `Space`
+  và mũi tên — `Space` đã là ngự kiếm phi hành, mũi tên đã là phím đi.
+
+#### Chọn một chiêu là chiêu đó lặp mãi — không còn showreel tự chạy
+
+Bản đầu là một **showreel**: vào màn là nó tự đi hết hai mươi hai bước rồi quay vòng, mỗi
+bước sống đúng `duration` giây. Nghe thì hợp lý, nhưng nó hỏng đúng cái việc người ta mở màn
+này ra để làm. Muốn nhìn kỹ đàn 72 thanh kiếm trúc bay theo quỹ đạo nào thì có **chín giây**;
+hết chín giây là nó lôi sang chiêu khác dù đang xem dở, và muốn xem lại thì phải đợi hết cả
+vòng. Xem một chiêu là việc **ngắm** — nó phải lặp tới khi người xem chán, không phải tới khi
+đồng hồ hết.
+
+Giờ bộ điều phối giữ **đúng một bước** và lặp nó vô hạn. Nhịp lặp là `repeatEvery` nếu bước
+có khai, không thì chính `duration` — cùng bộ số cũ, đọc lại theo một nghĩa khác. Đổi chiêu
+chỉ có ba đường, và cả ba đều đi qua `select()`: bấm một dòng trong danh sách bên trái, hoặc
+`Q` / `E`. Danh sách 22 dòng đó từ chỗ là mục lục trở thành **bộ điều khiển chính** của màn.
+
+Ba thứ phải sửa kèm, đều chỉ lộ ra khi một bước chạy vô hạn thay vì chín giây:
+
+- **Bù sinh lực và linh lực trước MỖI nhịp**, không chỉ lúc vào bước. Giá Y Thần Công đốt 18%
+  máu mỗi lần thi triển và ngự kiếm phi hành đốt 2,2% linh lực mỗi giây: xem một chiêu vài
+  phút thì nhân vật kiệt quệ rồi rơi khỏi kiếm giữa chừng, và người xem đọc ra là một cái lỗi
+  chứ không phải cái giá của chiêu. Bù ngay **trước** nhịp nên cú tụt vẫn thấy rõ đúng lúc.
+- **Trạng thái bật/tắt được gọi lại mỗi nhịp.** `setFlying` và `setMeditating` đều thoát sớm
+  khi đã đúng trạng thái, nên gọi lại không tốn gì — mà lại là thứ dựng chúng dậy sau khi bị
+  choáng hoặc bị ngắt giữa chừng.
+- **Toạ thiền do mã ra lệnh cần cờ riêng (`scriptedMeditate`).** Đây là một bug im lặng có
+  sẵn từ trước, chỉ lộ ra khi bước lặp: `updateMeditation` huỷ toạ thiền ngay khi không còn
+  ai giữ `F`, mà bộ trình diễn thì không giữ phím nào — nên bước Trường Xuân Công **chưa bao
+  giờ** diễn ra được lấy một khung hình, và chẳng có gì báo.
+
+#### Trục dọc của camera từng ngược
+
+`IsoCamera.orbit()` có hai dấu **ngược nhau**, và đó là thứ trông như lỗi mà lại đúng:
+`yaw` là góc quay quanh trục đứng, `pitch` là **độ cao** của camera — cùng một chiều kéo trên
+màn hình ra hai dấu khác nhau trong toạ độ cầu. Bản đầu để cả hai cùng dấu trừ, nên kéo xuống
+lại **hạ** camera xuống ngang tầm mắt: ngược với mọi game có camera quay quanh nhân vật, và
+đứng cạnh trục ngang thì hai trục đá nhau — cú kéo chéo nào cũng sai một nửa.
+
+Quy ước chốt lại: **camera đi theo tay, cảnh trượt ngược lại**. Kéo sang phải thì camera vòng
+sang phải; kéo xuống thì camera dâng lên nhìn từ trên. Có test trong
+`render/__tests__/IsoCamera.test.ts` khoá cả hai trục, và nó đo bằng **phép chiếu thật** —
+chiếu đỉnh đầu nhân vật ra NDC rồi xem nó trượt lên hay xuống — chứ không đọc dấu của `pitch`.
+Đọc dấu thì test chỉ chép lại code, và nó sẽ xanh y nguyên khi ai đó lật ngược quy ước.
+
+#### Chuột trái xoay camera, và cho zoom sát hơn hẳn lượt chơi
+
+Đây là màn để NGẮM một vật, nên phải xoay quanh nó được. Ba thay đổi nhỏ, mỗi cái chặn một
+kiểu hỏng riêng:
+
+- **`GameScene.orbitOnLeftDrag`** — `Game` vẫn là chỗ duy nhất đọc chuột để xoay camera, màn
+  chỉ khai "ở đây chuột trái cũng xoay". Để `Game` hỏi tên màn, hay để màn tự gọi
+  `camera.orbit()` trong `render()`, đều là nhét điều khiển camera vào chỗ thứ hai.
+- **`Player.mouseAttack = false`** ở màn này. Không tắt thì mỗi vòng kéo camera lại vung ra
+  một combo ba nhát — vừa che mất chiêu đang diễn vừa đánh sập vòng bia. Phím `J` vẫn chém.
+- **Lớp phủ `.showcase` phải thật sự cho chuột đi xuyên qua.** Nó khai
+  `pointer-events: none` từ đầu, nhưng khai báo đó bị `#ui-root > *` đè mất — xem mục *Ba màn,
+  và hai cái bẫy CSS*. Đây mới là lý do thật khiến xoay và zoom không nhúc nhích, và nó chặn
+  cả ba màn chứ không riêng màn này.
+- **`minDistance` hạ từ 9 xuống 5**, và **trả lại lúc `unload`**. Camera là của `Game`, dùng
+  chung cho cả ba màn: để nguyên 5 thì quay về đấu trường vẫn zoom sát được vào gáy nhân vật
+  và mất hết tầm nhìn chiến thuật. Ở 5 unit thì đếm được nếp áo Hàn Lập — mà cái đó thì chỉ
+  màn này mới cần.
 
 #### Thẻ giới thiệu nói ba thứ, theo đúng thứ tự người xem cần
 
@@ -893,10 +955,10 @@ lần đổi màu lông đầu tiên.
   có. Một id sai chỉ hiện ra khi có người bấm đúng mục đó, và lúc ấy nó là một ô trống chứ
   không phải một lỗi.
 
-### Ba màn, và một cái bẫy z-index
+### Ba màn, và hai cái bẫy CSS
 
 `main.ts` giờ điều phối ba `GameScene`: `arena` (lượt chơi), `terrace` (Luyện Kiếm Đài),
-`codex` (Đồ Giám). Hai chỗ phải sửa kèm:
+`codex` (Đồ Giám). Ba chỗ phải sửa kèm:
 
 - **`DebugPanel` phải được dựng LẠI mỗi lần đổi màn.** Nó đọc `scene.debug` một lần lúc khởi
   tạo để quyết định có hiện nhóm chiến đấu hay không; giữ nguyên một bảng qua các lần đổi màn
@@ -907,6 +969,17 @@ lần đổi màu lông đầu tiên.
   một lần lúc khởi động, còn màn nạp lại mỗi lần đổi, nên lớp phủ của màn được thêm sau và đè
   lên menu. Thẻ *"bấm ENTER để khởi trận"* của `WaveBanner` nằm chình ình giữa menu chính,
   che mất hai nút.
+- **`#ui-root > *` nuốt sạch chuột, và không có gì báo.** Dòng
+  `#ui-root > * { pointer-events: auto }` mang một `id`, nên nó **thắng về độ cụ thể** mọi
+  khai báo `pointer-events: none` mà từng lớp phủ tự viết bằng class. Ba lớp phủ tràn màn
+  hình — `.showcase`, `.world-bars`, `.float-text-layer` — do đó nằm đè kín canvas và ăn hết
+  sự kiện chuột: `Input` gắn listener trên chính thẻ `<canvas>`, mà sự kiện thì không bao giờ
+  tới đó. Kéo xoay camera, lăn zoom và ngắm bằng chuột đều chết **im lặng** — không lỗi
+  console, không cảnh báo, `elementFromPoint` ở giữa màn hình trả về một div trong suốt. Sửa
+  bằng `:where(#ui-root) > *`: `:where()` có độ cụ thể bằng không, nên dòng đó trở lại đúng
+  vai *mặc định* của nó và mọi `pointer-events: none` được tôn trọng như tác giả đã định.
+  Lối chẩn: khi chuột "không ăn", đo `document.elementFromPoint(x, y)` trước khi đi đọc code
+  điều khiển — nó chỉ thẳng ra thủ phạm trong một dòng.
 
 ### Ánh sáng
 

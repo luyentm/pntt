@@ -67,10 +67,23 @@ export class IsoCamera {
     this.apply()
   }
 
-  /** dx, dy tính bằng pixel chuột. */
+  /**
+   * Kéo chuột xoay camera quanh điểm ngắm. dx, dy tính bằng pixel.
+   *
+   * Quy ước là lối camera quay quanh nhân vật của game nhập vai, thứ tay người
+   * chơi đã quen: **camera đi theo tay, cảnh trượt ngược lại**. Kéo sang phải
+   * thì camera vòng sang phải; kéo XUỐNG thì camera dâng lên nhìn từ trên, kéo
+   * LÊN thì nó hạ xuống ngang tầm mắt.
+   *
+   * Hai dấu ngược nhau ở hai dòng dưới KHÔNG phải nhầm: `yaw` là góc quay
+   * quanh trục đứng, còn `pitch` là ĐỘ CAO của camera — cùng một chiều kéo
+   * trên màn hình ra hai dấu khác nhau trong toạ độ cầu. `pitch` từng mang dấu
+   * trừ, và khi đó kéo xuống lại hạ camera: đứng một mình thì không ai để ý,
+   * đứng cạnh trục ngang thì hai trục đá nhau và cú kéo chéo nào cũng sai.
+   */
   orbit(dx: number, dy: number): void {
     this.yaw -= dx * this.orbitSpeed
-    this.pitch = MathUtils.clamp(this.pitch - dy * this.orbitSpeed, this.minPitch, this.maxPitch)
+    this.pitch = MathUtils.clamp(this.pitch + dy * this.orbitSpeed, this.minPitch, this.maxPitch)
   }
 
   /** delta là WheelEvent.deltaY dồn lại. */

@@ -19,7 +19,17 @@ export interface ShowcaseActions {
    * Anh ở thân Kết Đan là nói sai về chính chiêu đó.
    */
   setRealm(realm: RealmPosition): void
-  /** Bước mới bắt đầu — UI hiện tên và chú thích. */
+  /**
+   * Bù đầy sinh lực và linh lực. Gọi trước MỖI nhịp diễn.
+   *
+   * Trước mỗi nhịp chứ không chỉ lúc đổi bước, vì bước giờ lặp vô hạn: Giá Y
+   * Thần Công đốt 18% máu mỗi lần thi triển và ngự kiếm phi hành đốt 2,2% linh
+   * lực mỗi giây, nên xem một bước vài phút là nhân vật kiệt quệ rồi rơi khỏi
+   * kiếm — người xem đọc ra là một cái lỗi chứ không phải cái giá của chiêu.
+   * Bù ngay TRƯỚC nhịp thì cú tụt vẫn thấy rõ đúng lúc chiêu ra.
+   */
+  restore(): void
+  /** Bước mới được chọn — UI hiện tên và chú thích. */
   announce(step: ShowcaseStep, index: number, total: number): void
 }
 
@@ -27,25 +37,36 @@ export interface ShowcaseActions {
 const READ_DELAY = 0.9
 
 /**
+ * Nhịp lặp của một bước, giây.
+ *
+ * Bước tự khai `repeatEvery` thì theo nhịp đó; không khai thì lặp lại sau đúng
+ * `duration` — con số vốn đã nói "xem chừng này là đủ một lượt".
+ */
+export function loopBeat(step: ShowcaseStep): number {
+  return step.repeatEvery ?? step.duration
+}
+
+/**
  * Bộ điều phối Luyện Kiếm Đài.
+ *
+ * Giữ ĐÚNG MỘT bước và lặp nó mãi. Trước đây nó là một showreel tự chạy hết cả
+ * hai mươi hai bước rồi quay vòng, và điều đó hỏng đúng cái việc người ta mở
+ * màn này ra để làm: muốn xem kỹ Thanh Trúc Phong Vân Kiếm thì có chín giây,
+ * hết chín giây là nó lôi sang chiêu khác dù đang xem dở. Xem một chiêu là việc
+ * NGẮM — phải lặp tới khi người xem chán, không phải tới khi đồng hồ hết.
  *
  * Thuần logic, cùng khuôn với `WaveDirector`: nó không cầm scene, không cầm
  * three, chỉ đếm thời gian và gọi yêu cầu qua `ShowcaseActions`. Nhờ vậy chạy
  * được cả kịch bản trong test mà không cần đồ hoạ.
  *
- * Có `READ_DELAY` trước mỗi hành động vì đây là chế độ để XEM: chữ và chiêu nổ
- * ra cùng lúc thì mắt bị chia hai chỗ và không đọc được cái nào.
+ * Có `READ_DELAY` trước nhịp đầu vì đây là chế độ để XEM: chữ và chiêu nổ ra
+ * cùng lúc thì mắt bị chia hai chỗ và không đọc được cái nào.
  */
 export class ShowcaseDirector {
-  /** Bước hiện tại, 0-based. */
-  index = 0
-  /** Đang tự chạy showreel. Tắt thì người chơi tự do thi triển. */
-  playing = false
-  /** Thời gian còn lại của bước. */
+  /** Bước đang lặp, 0-based. `-1` là chưa chọn gì — khi đó màn đứng yên. */
+  index = -1
+  /** Thời gian còn lại tới nhịp diễn kế tiếp. */
   timer = 0
-
-  private beatTimer = 0
-  private fired = false
 
   get current(): ShowcaseStep | null {
     return SHOWCASE[this.index] ?? null
@@ -55,74 +76,45 @@ export class ShowcaseDirector {
     return SHOWCASE.length
   }
 
-  /** Bắt đầu showreel từ bước hiện tại. */
-  start(actions: ShowcaseActions): void {
-    this.playing = true
-    this.enter(actions)
+  /** Nhịp lặp của bước đang chọn, giây. 0 khi chưa chọn bước nào. */
+  get beat(): number {
+    const step = this.current
+    return step ? loopBeat(step) : 0
   }
 
-  /** Dừng showreel, trả quyền điều khiển cho người chơi. */
-  stop(actions: ShowcaseActions): void {
-    this.playing = false
-    this.leave(actions)
-  }
-
-  /** Đổi giữa tự chạy và tự chơi. */
-  toggle(actions: ShowcaseActions): void {
-    if (this.playing) this.stop(actions)
-    else this.start(actions)
-  }
-
-  /** Sang bước sau. Dùng được cả khi đang dừng, để người chơi tự lật. */
-  next(actions: ShowcaseActions): void {
-    this.leave(actions)
-    this.index = (this.index + 1) % this.total
-    this.enter(actions)
-  }
-
-  prev(actions: ShowcaseActions): void {
-    this.leave(actions)
-    this.index = (this.index - 1 + this.total) % this.total
-    this.enter(actions)
-  }
-
-  jumpTo(index: number, actions: ShowcaseActions): void {
+  /** Chọn một bước và lặp nó. Đây là lối vào duy nhất của mọi cách đổi bước. */
+  select(index: number, actions: ShowcaseActions): void {
     this.leave(actions)
     this.index = Math.max(0, Math.min(this.total - 1, index))
     this.enter(actions)
   }
 
+  next(actions: ShowcaseActions): void {
+    this.select(this.index < 0 ? 0 : (this.index + 1) % this.total, actions)
+  }
+
+  prev(actions: ShowcaseActions): void {
+    this.select(this.index < 0 ? this.total - 1 : (this.index - 1 + this.total) % this.total, actions)
+  }
+
   fixedUpdate(dt: number, actions: ShowcaseActions): void {
-    if (!this.playing) return
     const step = this.current
     if (!step) return
 
     this.timer -= dt
-
-    // Hành động chính nổ ra sau khoảng đọc chú thích
-    const elapsed = step.duration - this.timer
-    if (!this.fired && elapsed >= READ_DELAY) {
-      this.fired = true
-      this.perform(step, actions)
-      this.beatTimer = step.repeatEvery ?? 0
-    } else if (this.fired && step.repeatEvery) {
-      this.beatTimer -= dt
-      if (this.beatTimer <= 0) {
-        this.beatTimer = step.repeatEvery
-        this.perform(step, actions)
-      }
-    }
-
-    if (this.timer <= 0) this.next(actions)
+    if (this.timer > 0) return
+    // Nhịp kế tiếp đặt trước khi diễn: `perform` có thể gọi ngược vào màn, và
+    // màn không nên thấy một bộ điều phối đang ở giữa chừng trạng thái
+    this.timer = loopBeat(step)
+    actions.restore()
+    this.perform(step, actions)
   }
 
   /** Vào một bước: đặt cảnh giới, đặt lại đồng hồ, dựng bia, báo UI. */
   private enter(actions: ShowcaseActions): void {
     const step = this.current
     if (!step) return
-    this.timer = step.duration
-    this.beatTimer = 0
-    this.fired = false
+    this.timer = READ_DELAY
     // Cảnh giới TRƯỚC khi dựng bia: máu của bia suy từ cảnh giới người chơi,
     // nên dựng trước rồi mới nâng cảnh giới thì cả vòng bia mỏng đi một bậc và
     // chúng chết ngay nhịp quét đầu tiên
@@ -135,8 +127,8 @@ export class ShowcaseDirector {
    * Ra khỏi bước: tắt những trạng thái KÉO DÀI.
    *
    * Bắt buộc phải có. Bay và toạ thiền là trạng thái bật/tắt, không phải một
-   * cú nổ — không tắt khi rời bước thì nhân vật vẫn đang lơ lửng trong lúc
-   * showreel diễn Thiên Lôi Phù, và bước sau đọc ra là một cái lỗi.
+   * cú nổ — không tắt khi rời bước thì nhân vật vẫn đang lơ lửng trong lúc màn
+   * diễn Thiên Lôi Phù, và bước sau đọc ra là một cái lỗi.
    */
   private leave(actions: ShowcaseActions): void {
     const step = this.current
@@ -153,6 +145,9 @@ export class ShowcaseDirector {
       case 'melee':
         actions.melee()
         return
+      // Hai trạng thái bật/tắt dưới đây không sợ gọi lại mỗi nhịp: `setFlying`
+      // và `setMeditating` đều thoát sớm khi đã đúng trạng thái. Gọi lại còn
+      // là thứ DỰNG chúng dậy sau khi bị choáng hay bị ngắt.
       case 'flight':
         actions.setFlight(true)
         return
@@ -166,10 +161,7 @@ export class ShowcaseDirector {
   }
 
   reset(): void {
-    this.index = 0
+    this.index = -1
     this.timer = 0
-    this.playing = false
-    this.beatTimer = 0
-    this.fired = false
   }
 }

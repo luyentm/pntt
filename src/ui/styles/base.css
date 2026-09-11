@@ -47,7 +47,15 @@ html, body {
   user-select: none;
   z-index: 10;
 }
-#ui-root > * { pointer-events: auto; }
+/* `:where()` để dòng này có độ cụ thể BẰNG KHÔNG, và đó là toàn bộ ý nghĩa của nó.
+   Viết thẳng `#ui-root > *` thì cái id thắng mọi khai báo `pointer-events: none`
+   mà từng lớp phủ tự viết bằng class — tức ba lớp phủ TRÀN MÀN HÌNH
+   (`.showcase`, `.world-bars`, `.float-text-layer`) nằm đè kín canvas và nuốt
+   sạch chuột: kéo xoay camera, lăn zoom và ngắm bằng chuột chết im lặng, không
+   có gì trong console báo rằng cú chuột đã bị một div trong suốt chặn lại.
+   Với `:where()` thì dòng này chỉ còn là MẶC ĐỊNH, và panel nào tự khai
+   `pointer-events: none` sẽ được tôn trọng đúng như tác giả nó định. */
+:where(#ui-root) > * { pointer-events: auto; }
 
 #boot {
   position: fixed;
@@ -1161,7 +1169,6 @@ html, body {
   text-transform: uppercase;
   color: rgba(232, 226, 208, 0.42);
 }
-.showcase.is-manual .showcase-meta { color: rgba(217, 177, 84, 0.75); }
 
 .showcase-title {
   margin-top: 3px;

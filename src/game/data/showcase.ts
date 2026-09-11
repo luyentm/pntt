@@ -23,10 +23,16 @@ export interface ShowcaseStep {
   readonly title?: string
   /** Chú thích riêng của bản trình diễn — nói về CÁCH XEM, không lặp lại mô tả chiêu. */
   readonly note: string
-  /** Thời lượng của bước, giây. */
+  /**
+   * Một lượt diễn dài bao lâu, giây.
+   *
+   * Bước LẶP MÃI cho tới khi người xem chọn bước khác, nên đây là nhịp lặp của
+   * những bước không khai `repeatEvery` — cũng chính là khoảng đủ để đọc xong
+   * chú thích và xem hết một lần thi triển.
+   */
   readonly duration: number
   readonly action: ShowcaseAction
-  /** Có thì lặp lại hành động theo nhịp này. */
+  /** Có thì lặp lại hành động theo nhịp này, thay cho `duration`. */
   readonly repeatEvery?: number
   /** Dựng lại mộc nhân và bia đá trước khi diễn bước này. */
   readonly refreshTargets?: boolean
@@ -57,7 +63,7 @@ function skill(id: string, step: Omit<ShowcaseStep, 'action'>): ShowcaseStep {
  * Kịch bản trình diễn thần thông của Hàn Lập — Luyện Kiếm Đài.
  *
  * Là DỮ LIỆU, không phải mã: thêm một chiêu vào `skills.ts` rồi thêm một dòng ở
- * đây là nó vào showreel, không phải sửa bộ điều phối.
+ * đây là nó vào bảng trình diễn, không phải sửa bộ điều phối.
  *
  * Chia CHƯƠNG theo cảnh giới, và mỗi bước tự khai cảnh giới của nó. Đây không
  * phải chuyện trình bày: Thanh Trúc Phong Vân Kiếm bay ra 12 thanh ở Kết Đan sơ

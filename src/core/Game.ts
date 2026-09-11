@@ -128,7 +128,10 @@ export class Game {
 
     // Điều khiển camera nằm ở nhịp frame vì nó thuần hình ảnh, và vì delta
     // kéo/cuộn chuột chỉ được xoá một lần mỗi frame (xem Input.endFrame)
-    if (this.input.mouseIsDown(MouseBtn.Right)) {
+    const orbiting =
+      this.input.mouseIsDown(MouseBtn.Right) ||
+      (this.scene?.orbitOnLeftDrag === true && this.input.mouseIsDown(MouseBtn.Left))
+    if (orbiting) {
       this.camera.orbit(this.input.dragX, this.input.dragY)
     }
     if (this.input.wheel !== 0) this.camera.zoom(this.input.wheel)
